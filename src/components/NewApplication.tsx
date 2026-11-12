@@ -869,7 +869,7 @@ export function NewApplication({
               onClick={() => handleVolumeTierChange('low')}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <strong style={{ fontSize: 16, color: 'var(--orange-700)' }}>Low Volume</strong>
+                <strong style={{ fontSize: 16, color: 'var(--brand-700)' }}>Low Volume</strong>
                 <span className="badge band-fair">Basic Verification</span>
               </div>
               <div style={{ fontSize: 13 }}>
@@ -886,7 +886,7 @@ export function NewApplication({
               onClick={() => handleVolumeTierChange('high')}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <strong style={{ fontSize: 16, color: 'var(--orange-700)' }}>High Volume</strong>
+                <strong style={{ fontSize: 16, color: 'var(--brand-700)' }}>High Volume</strong>
                 <span className="badge band-excellent">Basic + Enhanced KYC</span>
               </div>
               <div style={{ fontSize: 13 }}>
@@ -901,7 +901,7 @@ export function NewApplication({
 
           {/* Basic Fields (always shown) */}
           <div className="card-tinted" style={{ marginBottom: 14 }}>
-            <div style={{ fontWeight: 800, color: 'var(--orange-700)', marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, color: 'var(--brand-700)', marginBottom: 10 }}>
               Basic Registration Verification
             </div>
             <div className="grid-3">
@@ -1005,7 +1005,7 @@ export function NewApplication({
           {/* Enhanced KYC Fields (ONLY shown for High Volume) */}
           {draft.volumeTier === 'high' && (
             <div className="card-tinted">
-              <div style={{ fontWeight: 800, color: 'var(--orange-700)', marginBottom: 10 }}>
+              <div style={{ fontWeight: 700, color: 'var(--brand-700)', marginBottom: 10 }}>
                 Enhanced KYC Verification (Required for High Volume)
               </div>
               <div className="grid-3">
@@ -1133,7 +1133,7 @@ export function NewApplication({
                     <span style={{ fontSize: 11, fontWeight: 700 }}>Demo Price</span>
                   </div>
                   <div style={{ fontWeight: 800, fontSize: 14.5 }}>{item.item_name}</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--orange-700)', marginTop: 6 }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginTop: 6 }}>
                     {formatAoa(item.price_aoa)}
                   </div>
                   {item.description && (
@@ -1214,7 +1214,7 @@ export function NewApplication({
                   onClick={() => setDraft((p) => ({ ...p, selectedEmiPlanId: plan.id }))}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <strong style={{ fontSize: 17, color: 'var(--orange-700)' }}>
+                    <strong style={{ fontSize: 17, color: 'var(--brand-700)' }}>
                       {plan.term_months} Months EMI
                     </strong>
                     <span className="badge band-good">{plan.interest_rate_pct}% APR (Demo)</span>
@@ -1307,7 +1307,7 @@ export function NewApplication({
           <div className="grid-2">
             {/* Telecom Source Form */}
             <div className="card" style={{ padding: 14 }}>
-              <strong style={{ color: 'var(--orange-700)', display: 'block', marginBottom: 10 }}>
+              <strong style={{ color: 'var(--brand-700)', display: 'block', marginBottom: 10 }}>
                 1. Telecom Behavior
               </strong>
               <div className="grid-2">
@@ -1398,7 +1398,7 @@ export function NewApplication({
 
             {/* Mobile Money, Banking, Identity, Tax */}
             <div className="card" style={{ padding: 14 }}>
-              <strong style={{ color: 'var(--orange-700)', display: 'block', marginBottom: 10 }}>
+              <strong style={{ color: 'var(--brand-700)', display: 'block', marginBottom: 10 }}>
                 2. Unitel Money, Banking, Identity &amp; Tax
               </strong>
               <div className="grid-2">

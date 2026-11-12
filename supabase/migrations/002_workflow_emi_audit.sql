@@ -86,3 +86,4 @@ create policy "demo_all_emi" on public.emi_config for all using (true) with chec
 create policy "demo_all_app_data" on public.application_data for all using (true) with check (true);
 create policy "demo_all_audit" on public.audit_log for all using (true) with check (true);
 create policy "demo_all_tpls" on public.notification_templates for all using (true) with check (true);
+

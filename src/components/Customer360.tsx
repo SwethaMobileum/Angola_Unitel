@@ -159,7 +159,7 @@ export function Customer360({
           }}
         >
           <div>
-            <h3 style={{ fontSize: 20, fontWeight: 800, color: 'var(--orange-700)' }}>
+            <h3 style={{ fontSize: 20, fontWeight: 700, color: 'var(--brand-700)' }}>
               {profile.customer.full_name}
             </h3>
             <div style={{ fontSize: 13, marginTop: 2 }}>
@@ -214,7 +214,7 @@ export function Customer360({
             {/* Source 1: Telecom */}
             <div className="card">
               <div className="card-header" style={{ marginBottom: 10 }}>
-                <strong style={{ color: 'var(--orange-700)' }}>Telecom Behavior</strong>
+                <strong style={{ color: 'var(--brand-700)' }}>Telecom Behavior</strong>
                 <SourceStatusBadge status={explanation.sourceStatuses.telecom} />
               </div>
               {profile.telecom ? (
@@ -253,7 +253,7 @@ export function Customer360({
             {/* Source 2: Identity */}
             <div className="card">
               <div className="card-header" style={{ marginBottom: 10 }}>
-                <strong style={{ color: 'var(--orange-700)' }}>Identity &amp; KYC</strong>
+                <strong style={{ color: 'var(--brand-700)' }}>Identity &amp; KYC</strong>
                 <SourceStatusBadge status={explanation.sourceStatuses.identity} />
               </div>
               {profile.identity ? (
@@ -288,7 +288,7 @@ export function Customer360({
             {/* Source 3: Mobile Money */}
             <div className="card">
               <div className="card-header" style={{ marginBottom: 10 }}>
-                <strong style={{ color: 'var(--orange-700)' }}>Unitel Money</strong>
+                <strong style={{ color: 'var(--brand-700)' }}>Unitel Money</strong>
                 <SourceStatusBadge status={explanation.sourceStatuses.mobileMoney} />
               </div>
               {profile.mobileMoney?.wallet_exists ? (
@@ -338,7 +338,7 @@ export function Customer360({
             {/* Source 4: Tax */}
             <div className="card">
               <div className="card-header" style={{ marginBottom: 10 }}>
-                <strong style={{ color: 'var(--orange-700)' }}>Tax Standing (AGT)</strong>
+                <strong style={{ color: 'var(--brand-700)' }}>Tax Standing (AGT)</strong>
                 <SourceStatusBadge status={explanation.sourceStatuses.tax} />
               </div>
               {profile.tax ? (
@@ -388,8 +388,8 @@ export function Customer360({
                       style={{
                         width: 28,
                         height: 76,
-                        background: '#FFFFFF',
-                        border: '1px solid var(--orange-200)',
+                        background: 'var(--surface)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
                         display: 'flex',
                         alignItems: 'flex-end',
@@ -402,12 +402,12 @@ export function Customer360({
                           height: `${heightPct}%`,
                           background:
                             h.band === 'Excellent'
-                              ? 'var(--orange-700)'
+                              ? 'var(--slate-600)'
                               : h.band === 'Good'
-                                ? 'var(--orange-500)'
+                                ? 'var(--slate-500)'
                                 : h.band === 'Fair'
-                                  ? 'var(--orange-400)'
-                                  : 'var(--orange-300)',
+                                  ? 'var(--slate-400)'
+                                  : 'var(--slate-300)',
                         }}
                       />
                     </div>

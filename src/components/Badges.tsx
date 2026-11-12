@@ -46,7 +46,7 @@ export function SuggestedDecisionBadge({ decision }: { decision: DecisionOutcome
 
 export function VolumeTierBadge({ tier }: { tier: VolumeTier }) {
   return (
-    <span className={`badge ${tier === 'high' ? 'band-good' : 'conf-low'}`}>
+    <span className={`badge ${tier === 'high' ? 'band-fair' : 'conf-low'}`}>
       {tier === 'high' ? 'High Volume (KYC)' : 'Low Volume (Basic)'}
     </span>
   );
@@ -64,9 +64,9 @@ export function SourceStatusBadge({ status }: { status: SourceStatus }) {
   return <span className={cls}>{label}</span>;
 }
 
-export function orangeRampForRatio(ratio: number): string {
-  if (ratio >= 0.8) return 'var(--orange-700)';
-  if (ratio >= 0.6) return 'var(--orange-500)';
-  if (ratio >= 0.4) return 'var(--orange-400)';
-  return 'var(--orange-300)';
+export function slateRampForRatio(ratio: number): string {
+  if (ratio >= 0.8) return 'var(--slate-600)';
+  if (ratio >= 0.6) return 'var(--slate-500)';
+  if (ratio >= 0.4) return 'var(--slate-400)';
+  return 'var(--slate-300)';
 }

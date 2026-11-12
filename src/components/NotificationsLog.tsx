@@ -105,8 +105,8 @@ export function NotificationsLog({ notifications }: NotificationsLogProps) {
                   margin: 0,
                   padding: 12,
                   borderRadius: 8,
-                  background: 'var(--orange-50)',
-                  border: '1px solid var(--orange-200)',
+                  background: 'var(--table-stripe)',
+                  border: '1px solid var(--border)',
                   whiteSpace: 'pre-wrap',
                   fontFamily: 'inherit',
                   fontSize: 13,
@@ -139,7 +139,7 @@ export function NotificationsLog({ notifications }: NotificationsLogProps) {
                     key={n.id}
                     style={{
                       cursor: 'pointer',
-                      background: activeNotif?.id === n.id ? 'var(--orange-100)' : undefined,
+                      background: activeNotif?.id === n.id ? 'var(--hover)' : undefined,
                     }}
                     onClick={() => setSelectedId(n.id)}
                   >

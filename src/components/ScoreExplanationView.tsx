@@ -1,5 +1,5 @@
 import type { CustomerProfile, ScoreExplanation } from '../scoring';
-import { BandBadge, ConfidenceBadge, SourceStatusBadge, orangeRampForRatio } from './Badges';
+import { BandBadge, ConfidenceBadge, SourceStatusBadge, slateRampForRatio } from './Badges';
 import { ScoreGauge } from './ScoreGauge';
 
 interface ScoreExplanationViewProps {
@@ -44,7 +44,7 @@ export function ScoreExplanationView({
         <div className="card">
           <div className="card-header">
             <div>
-              <h3 className="card-title">Category Breakdown (Single Orange Ramp)</h3>
+              <h3 className="card-title">Category Breakdown</h3>
               <div style={{ fontSize: 12, opacity: 0.85 }}>
                 Thin or missing wallets are removed from the denominator so basic-tier users are not penalized.
               </div>
@@ -88,7 +88,7 @@ export function ScoreExplanationView({
                       className="bar-fill"
                       style={{
                         width: cat.excludedFromDenominator ? '0%' : `${Math.min(100, ratio * 100)}%`,
-                        backgroundColor: orangeRampForRatio(ratio),
+                        backgroundColor: slateRampForRatio(ratio),
                       }}
                     />
                   </div>
@@ -100,7 +100,7 @@ export function ScoreExplanationView({
 
           {explanation.adjustments.length > 0 && (
             <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--orange-700)' }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>
                 Rules, Thin-File Re-normalization &amp; Caps Applied
               </div>
               {explanation.adjustments.map((adj) => (

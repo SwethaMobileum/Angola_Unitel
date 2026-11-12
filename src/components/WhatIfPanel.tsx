@@ -170,7 +170,7 @@ export function WhatIfPanel({
   };
 
   return (
-    <div className="card" style={{ borderColor: 'var(--orange-400)', borderWidth: 2 }}>
+    <div className="card">
       <div className="card-header">
         <div>
           <h3 className="card-title">Live What-If Simulator — {draft.customer.full_name}</h3>
@@ -234,13 +234,13 @@ export function WhatIfPanel({
           )}
 
           <div className="card" style={{ padding: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--orange-700)', marginBottom: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>
               Simulated Notification Preview ({limitDecision.decisionLabel})
             </div>
-            <div style={{ fontSize: 12, background: 'var(--orange-50)', padding: 8, borderRadius: 6, marginBottom: 6 }}>
+            <div style={{ fontSize: 12, background: 'var(--table-stripe)', border: '1px solid var(--border)', padding: 8, borderRadius: 6, marginBottom: 6 }}>
               <strong>SMS:</strong> {previewNotifications[0]?.body}
             </div>
-            <div style={{ fontSize: 12, background: 'var(--orange-50)', padding: 8, borderRadius: 6 }}>
+            <div style={{ fontSize: 12, background: 'var(--table-stripe)', border: '1px solid var(--border)', padding: 8, borderRadius: 6 }}>
               <strong>Email Subject:</strong> {previewNotifications[1]?.subject}
             </div>
           </div>
@@ -252,7 +252,7 @@ export function WhatIfPanel({
             {/* Telecom Controls */}
             <div className="card" style={{ padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <strong style={{ color: 'var(--orange-700)' }}>
+                <strong style={{ color: 'var(--brand-700)' }}>
                   Telecom Behavior ({config.weights.telecom}%)
                 </strong>
                 <SourceStatusBadge status={explanation.sourceStatuses.telecom} />
@@ -265,7 +265,7 @@ export function WhatIfPanel({
                 max={72}
                 value={simMonths}
                 onChange={(e) => handleSimMonthsChange(Number(e.target.value))}
-                style={{ width: '100%', accentColor: 'var(--orange-600)', marginBottom: 10 }}
+                style={{ width: '100%', accentColor: 'var(--slate-600)', marginBottom: 10 }}
               />
 
               <label className="field-label">
@@ -281,7 +281,7 @@ export function WhatIfPanel({
                     if (next.telecom) next.telecom.topup_months_last_12 = Number(e.target.value);
                   })
                 }
-                style={{ width: '100%', accentColor: 'var(--orange-600)', marginBottom: 10 }}
+                style={{ width: '100%', accentColor: 'var(--slate-600)', marginBottom: 10 }}
               />
 
               <label className="field-label">
@@ -340,7 +340,7 @@ export function WhatIfPanel({
             {/* Identity, Banking & Tax Controls */}
             <div className="card" style={{ padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <strong style={{ color: 'var(--orange-700)' }}>
+                <strong style={{ color: 'var(--brand-700)' }}>
                   Identity ({config.weights.identity}%), Bank &amp; Tax ({config.weights.tax}%)
                 </strong>
                 <SourceStatusBadge status={explanation.sourceStatuses.identity} />
@@ -428,7 +428,7 @@ export function WhatIfPanel({
           {/* Unitel Money Controls */}
           <div className="card" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-              <strong style={{ color: 'var(--orange-700)' }}>
+              <strong style={{ color: 'var(--brand-700)' }}>
                 Mobile Money — Unitel Money ({config.weights.mobileMoney}%)
               </strong>
               <SourceStatusBadge status={explanation.sourceStatuses.mobileMoney} />
@@ -480,7 +480,7 @@ export function WhatIfPanel({
                       if (next.mobileMoney) next.mobileMoney.txn_count_90d = Number(e.target.value);
                     })
                   }
-                  style={{ width: '100%', accentColor: 'var(--orange-600)' }}
+                  style={{ width: '100%', accentColor: 'var(--slate-600)' }}
                 />
               </div>
 
@@ -501,7 +501,7 @@ export function WhatIfPanel({
                         next.mobileMoney.monthly_inflow_aoa = Number(e.target.value);
                     })
                   }
-                  style={{ width: '100%', accentColor: 'var(--orange-600)' }}
+                  style={{ width: '100%', accentColor: 'var(--slate-600)' }}
                 />
               </div>
             </div>

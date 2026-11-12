@@ -151,7 +151,7 @@ export function ApprovalsQueue({
                   {/* Score Breakdown & Reasons inline */}
                   <div
                     className="card"
-                    style={{ padding: 12, background: '#FFFFFF', fontSize: 12.5 }}
+                    style={{ padding: 12, background: 'var(--surface)', fontSize: 12.5 }}
                   >
                     <div style={{ marginBottom: 6 }}>
                       <strong>Credit Limit:</strong> {formatAoa(app.credit_limit_aoa)} (Max EMI:{' '}
@@ -171,7 +171,7 @@ export function ApprovalsQueue({
                       </div>
                     )}
                     {exp?.thinFileNotice && (
-                      <div style={{ marginTop: 4, fontWeight: 600, color: 'var(--orange-700)' }}>
+                      <div style={{ marginTop: 4, fontWeight: 600, color: 'var(--text-muted)' }}>
                         {exp.thinFileNotice}
                       </div>
                     )}
@@ -212,7 +212,7 @@ export function ApprovalsQueue({
                       </button>
                       <button
                         type="button"
-                        className="btn btn-outline-orange btn-sm"
+                        className="btn btn-secondary btn-sm"
                         disabled={!canAct}
                         onClick={() => handleAction(app.id, 'more_info_requested')}
                       >

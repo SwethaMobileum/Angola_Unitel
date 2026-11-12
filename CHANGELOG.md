@@ -23,3 +23,9 @@
 - Updated `Dashboard.tsx` with Data Confidence (`Low/Medium/High`) chart and Low/High volume counts.
 - Updated `ApprovalsQueue.tsx` with inline volume/equipment/EMI/score reasons and mandatory-reason Approve / Reject / Request More Info actions.
 - Added `CatalogAndEmiAdmin.tsx`, `NotificationTemplatesView.tsx`, `UsersAndRolesView.tsx`, `AuditLogView.tsx`, `DataToolsView.tsx` (Load sample data, Clear all data, Export CSV), and config version history in `AdminConfig.tsx`.
+
+## Step 6 — Enterprise Neutral SaaS Restyle (2026-11-12)
+- Centralized all colors as CSS variables in `src/styles/theme.css` (`--brand-50/500/600/700` + neutral `--bg`, `--surface`, `--border`, `--text`, `--slate-*`).
+- Restricted orange to top bar (`--brand-600`, darkened for >= 4.5:1 contrast with white text), sidebar active left bar & highlight (`--brand-500` / `--brand-50`), page/section headings (`--brand-700`), and primary buttons.
+- Converted KPI cards, forms, tables, charts, gauges, and icon status badges to neutral slate/gray ramps with zero hard-coded colors in TSX files.
+

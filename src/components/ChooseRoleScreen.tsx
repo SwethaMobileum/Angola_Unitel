@@ -67,10 +67,10 @@ export function ChooseRoleScreen({ onSelectRole }: ChooseRoleScreenProps) {
 
       <div className="role-picker-center">
         <div style={{ textAlign: 'center' }}>
-          <h1 style={{ fontSize: 30, fontWeight: 800, color: 'var(--orange-700)' }}>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--brand-700)' }}>
             Choose your role
           </h1>
-          <p style={{ fontSize: 15, marginTop: 6, color: 'var(--orange-900)' }}>
+          <p style={{ fontSize: 15, marginTop: 6, color: 'var(--text-muted)' }}>
             Select a persona to enter Credit Intelligence. You can switch roles anytime from the top
             navigation bar.
           </p>
@@ -125,3 +125,4 @@ export function ChooseRoleScreen({ onSelectRole }: ChooseRoleScreenProps) {
     </div>
   );
 }
+

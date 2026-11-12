@@ -96,3 +96,4 @@ export function UsersAndRolesView({ currentRole, onSwitchRole }: UsersAndRolesVi
     </div>
   );
 }
+

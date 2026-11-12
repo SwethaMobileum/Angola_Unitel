@@ -231,7 +231,7 @@ export function ApplicationDetail({
 
       {/* Approver Action Box */}
       {canApprove && (
-        <div className="card" style={{ borderColor: 'var(--orange-500)', borderWidth: 2 }}>
+        <div className="card">
           <div className="card-header">
             <h3 className="card-title">Approver Decision Panel</h3>
             <SuggestedDecisionBadge decision={application.decision} />
@@ -258,7 +258,7 @@ export function ApplicationDetail({
             </button>
             <button
               type="button"
-              className="btn btn-outline-orange"
+              className="btn btn-secondary"
               onClick={() => handleAction('more_info_requested')}
             >
               ◷ Request More Info

@@ -99,7 +99,7 @@ export function DataToolsView({
             Empties all subscribers, applications, notifications, and audit logs so the portal
             starts completely blank for testing brand-new entry.
           </p>
-          <button type="button" className="btn btn-outline-orange" onClick={onClearAllData}>
+          <button type="button" className="btn btn-secondary" onClick={onClearAllData}>
             Clear All Data (Start Empty)
           </button>
         </div>
@@ -123,3 +123,4 @@ export function DataToolsView({
     </div>
   );
 }
+

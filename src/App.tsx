@@ -160,7 +160,7 @@ export default function App() {
     return (
       <div className="app-shell" style={{ padding: 48, textAlign: 'center' }}>
         <div className="card" style={{ maxWidth: 480, margin: '0 auto' }}>
-          <h2 style={{ color: 'var(--orange-700)' }}>Loading Credit Intelligence...</h2>
+          <h2 style={{ color: 'var(--brand-700)' }}>Loading Credit Intelligence...</h2>
           <p>Preparing 300 subscriber profiles, scoring engine, and catalog.</p>
         </div>
       </div>

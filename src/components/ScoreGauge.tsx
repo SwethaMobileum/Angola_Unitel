@@ -45,23 +45,23 @@ export function ScoreGauge({ score, band, confidence, uncappedScore }: ScoreGaug
 
   const arcColor =
     band === 'Excellent'
-      ? 'var(--orange-700)'
+      ? 'var(--slate-600)'
       : band === 'Good'
-        ? 'var(--orange-500)'
+        ? 'var(--slate-500)'
         : band === 'Fair'
-          ? 'var(--orange-400)'
-          : 'var(--orange-300)';
+          ? 'var(--slate-400)'
+          : 'var(--slate-300)';
 
   return (
     <div className="gauge-card">
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--orange-700)' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>
         Proxy credit score (demo)
       </div>
       <svg className="gauge-svg" viewBox="0 0 220 130" aria-label={`Proxy credit score ${score}`}>
         <path
           d="M 26 112 A 84 84 0 0 1 194 112"
           fill="none"
-          stroke="var(--orange-100)"
+          stroke="var(--border)"
           strokeWidth="18"
           strokeLinecap="round"
         />
@@ -87,7 +87,7 @@ export function ScoreGauge({ score, band, confidence, uncappedScore }: ScoreGaug
         <ConfidenceBadge confidence={confidence} />
       </div>
       {uncappedScore !== undefined && uncappedScore > score && (
-        <div style={{ fontSize: 12, color: 'var(--orange-700)', fontWeight: 600 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
           Uncapped model score: {uncappedScore} (hard cap active)
         </div>
       )}

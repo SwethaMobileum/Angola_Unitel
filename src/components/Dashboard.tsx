@@ -91,16 +91,16 @@ export function Dashboard({
   }, [applications]);
 
   const bandsOrder: Array<{ name: ScoreBandName; range: string; color: string }> = [
-    { name: 'Poor', range: '300–550', color: 'var(--orange-300)' },
-    { name: 'Fair', range: '551–699', color: 'var(--orange-400)' },
-    { name: 'Good', range: '700–799', color: 'var(--orange-500)' },
-    { name: 'Excellent', range: '800–900', color: 'var(--orange-700)' },
+    { name: 'Poor', range: '300–550', color: 'var(--slate-300)' },
+    { name: 'Fair', range: '551–699', color: 'var(--slate-400)' },
+    { name: 'Good', range: '700–799', color: 'var(--slate-500)' },
+    { name: 'Excellent', range: '800–900', color: 'var(--slate-600)' },
   ];
 
   const confOrder: Array<{ name: ConfidenceLevel; desc: string; color: string }> = [
-    { name: 'Low', desc: '1 meaningful source (thin file)', color: 'var(--orange-300)' },
-    { name: 'Medium', desc: '2 meaningful sources (partial thin file)', color: 'var(--orange-500)' },
-    { name: 'High', desc: '3–4 meaningful sources', color: 'var(--orange-700)' },
+    { name: 'Low', desc: '1 meaningful source (thin file)', color: 'var(--slate-300)' },
+    { name: 'Medium', desc: '2 meaningful sources (partial thin file)', color: 'var(--slate-500)' },
+    { name: 'High', desc: '3–4 meaningful sources', color: 'var(--slate-600)' },
   ];
 
   const maxBandCount = Math.max(1, ...Object.values(portfolioStats.bandCounts));
@@ -182,8 +182,8 @@ export function Dashboard({
           <div className="card-header">
             <div>
               <h3 className="card-title">Proxy Score Distribution ({profiles.length} Subscribers)</h3>
-              <div style={{ fontSize: 12 }}>
-                Single orange ramp; updates immediately when Admin updates weights or rules.
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Neutral slate ramp; updates immediately when Admin updates weights or rules.
               </div>
             </div>
           </div>
