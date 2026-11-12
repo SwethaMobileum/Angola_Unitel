@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import {
   UNITEL_MONEY_TIERS,
+  UNITEL_MONEY_UNBANKED_HELPER,
   buildNotificationDrafts,
   evaluateCreditScore,
   evaluateLimitAndDecision,
@@ -13,7 +14,12 @@ import type {
   NotificationRecord,
   ScoringConfig,
 } from '../scoring';
-import { BandBadge, ConfidenceBadge, DecisionBadge, SourceStatusBadge } from './Badges';
+import {
+  BandBadge,
+  ConfidenceBadge,
+  SourceStatusBadge,
+  SuggestedDecisionBadge,
+} from './Badges';
 import { ScoreGauge } from './ScoreGauge';
 
 interface WhatIfPanelProps {
@@ -21,7 +27,9 @@ interface WhatIfPanelProps {
   config: ScoringConfig;
   productName: string;
   productPriceAoa: number;
+  monthlyEmiAoa?: number;
   activeApplication?: ApplicationRecord | null;
+  onProfileDraftChange?: (draft: CustomerProfile) => void;
   onSyncApplicationAndNotifications?: (
     updatedProfile: CustomerProfile,
     updatedApp: ApplicationRecord,
@@ -35,7 +43,9 @@ export function WhatIfPanel({
   config,
   productName,
   productPriceAoa,
+  monthlyEmiAoa,
   activeApplication,
+  onProfileDraftChange,
   onSyncApplicationAndNotifications,
   onResetProfile,
 }: WhatIfPanelProps) {
@@ -56,8 +66,8 @@ export function WhatIfPanel({
 
   const explanation = useMemo(() => evaluateCreditScore(draft, config), [draft, config]);
   const limitDecision = useMemo(
-    () => evaluateLimitAndDecision(explanation, productPriceAoa, config),
-    [explanation, productPriceAoa, config]
+    () => evaluateLimitAndDecision(explanation, productPriceAoa, config, monthlyEmiAoa),
+    [explanation, productPriceAoa, config, monthlyEmiAoa]
   );
 
   const previewApp: ApplicationRecord = useMemo(
@@ -66,14 +76,17 @@ export function WhatIfPanel({
       customer_id: draft.customer.id,
       customer_name: draft.customer.full_name,
       mobile_no: draft.customer.mobile_no,
+      volume_tier: activeApplication?.volume_tier ?? draft.customer.volume_tier ?? 'low',
       product: productName,
       product_price_aoa: productPriceAoa,
-      status:
-        limitDecision.decision === 'auto_approve'
-          ? 'approved'
-          : limitDecision.decision === 'manual_review'
-            ? 'pending_review'
-            : 'declined',
+      emi_term_months: activeApplication?.emi_term_months ?? 12,
+      emi_rate_pct: activeApplication?.emi_rate_pct ?? 11,
+      down_payment_aoa: activeApplication?.down_payment_aoa ?? Math.round(productPriceAoa * 0.1),
+      monthly_emi_aoa: limitDecision.monthlyEmiAoa,
+      total_payable_aoa: activeApplication?.total_payable_aoa ?? productPriceAoa,
+      emi_affordable: limitDecision.emiAffordable,
+      max_monthly_emi_aoa: limitDecision.maxMonthlyEmiAoa,
+      status: activeApplication?.status ?? 'pending_review',
       score: explanation.score,
       band: explanation.band,
       confidence: explanation.confidence,
@@ -94,10 +107,11 @@ export function WhatIfPanel({
     const next = structuredClone(draft);
     updater(next);
     setDraft(next);
+    onProfileDraftChange?.(next);
 
     if (activeApplication && onSyncApplicationAndNotifications) {
       const nextExp = evaluateCreditScore(next, config);
-      const nextDec = evaluateLimitAndDecision(nextExp, productPriceAoa, config);
+      const nextDec = evaluateLimitAndDecision(nextExp, productPriceAoa, config, monthlyEmiAoa);
       const nextApp: ApplicationRecord = {
         ...activeApplication,
         product: productName,
@@ -106,14 +120,11 @@ export function WhatIfPanel({
         band: nextExp.band,
         confidence: nextExp.confidence,
         credit_limit_aoa: nextDec.creditLimitAoa,
+        emi_affordable: nextDec.emiAffordable,
+        max_monthly_emi_aoa: nextDec.maxMonthlyEmiAoa,
         decision: nextDec.decision,
         decision_reason: nextDec.decisionReason,
-        status:
-          nextDec.decision === 'auto_approve'
-            ? 'approved'
-            : nextDec.decision === 'manual_review'
-              ? 'pending_review'
-              : 'declined',
+        profile_snapshot: next,
       };
       const notifs = buildNotificationDrafts(nextApp, nextDec.decision, config);
       onSyncApplicationAndNotifications(next, nextApp, notifs);
@@ -134,9 +145,10 @@ export function WhatIfPanel({
     const orig = structuredClone(originalRef.current);
     setDraft(orig);
     setSimMonths(orig.telecom ? monthsBetween(orig.telecom.sim_activation_date) : 12);
+    onProfileDraftChange?.(orig);
     if (activeApplication && onSyncApplicationAndNotifications) {
       const nextExp = evaluateCreditScore(orig, config);
-      const nextDec = evaluateLimitAndDecision(nextExp, productPriceAoa, config);
+      const nextDec = evaluateLimitAndDecision(nextExp, productPriceAoa, config, monthlyEmiAoa);
       const nextApp: ApplicationRecord = {
         ...activeApplication,
         product: productName,
@@ -145,14 +157,11 @@ export function WhatIfPanel({
         band: nextExp.band,
         confidence: nextExp.confidence,
         credit_limit_aoa: nextDec.creditLimitAoa,
+        emi_affordable: nextDec.emiAffordable,
+        max_monthly_emi_aoa: nextDec.maxMonthlyEmiAoa,
         decision: nextDec.decision,
         decision_reason: nextDec.decisionReason,
-        status:
-          nextDec.decision === 'auto_approve'
-            ? 'approved'
-            : nextDec.decision === 'manual_review'
-              ? 'pending_review'
-              : 'declined',
+        profile_snapshot: orig,
       };
       const notifs = buildNotificationDrafts(nextApp, nextDec.decision, config);
       onSyncApplicationAndNotifications(orig, nextApp, notifs);
@@ -165,9 +174,9 @@ export function WhatIfPanel({
       <div className="card-header">
         <div>
           <h3 className="card-title">Live What-If Simulator — {draft.customer.full_name}</h3>
-          <div style={{ fontSize: 12.5, opacity: 0.85 }}>
-            Adjust telecom, KYC, Unitel Money, or tax attributes to see score, limit, decision, and
-            notifications update instantaneously.
+          <div style={{ fontSize: 12.5 }}>
+            Adjust telecom, KYC, Unitel Money, banking, or tax attributes to test score, limit,
+            EMI affordability, and decision suggestion instantly.
           </div>
         </div>
         <button type="button" className="btn btn-secondary btn-sm" onClick={handleReset}>
@@ -188,26 +197,31 @@ export function WhatIfPanel({
           </div>
 
           <div className="card" style={{ padding: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontWeight: 700 }}>Outcome for {productName}</span>
-              <DecisionBadge decision={limitDecision.decision} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700 }}>Policy Suggestion</span>
+              <SuggestedDecisionBadge decision={limitDecision.decision} />
             </div>
             <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div>
                 Assigned limit: <strong>{formatAoa(limitDecision.creditLimitAoa)}</strong>
               </div>
               <div>
-                Product price: <strong>{formatAoa(productPriceAoa)}</strong>
+                Equipment price: <strong>{formatAoa(productPriceAoa)}</strong>
               </div>
               <div>
-                {limitDecision.headroomAoa >= 0 ? 'Headroom' : 'Shortfall gap'}:{' '}
-                <strong>{formatAoa(Math.abs(limitDecision.headroomAoa))}</strong>
+                Monthly EMI: <strong>{formatAoa(limitDecision.monthlyEmiAoa)}</strong> vs max{' '}
+                <strong>{formatAoa(limitDecision.maxMonthlyEmiAoa)}</strong> (
+                {limitDecision.emiAffordable ? '✓ Affordable' : '✕ Over cap'})
               </div>
-              <div style={{ fontSize: 12, marginTop: 4, opacity: 0.9 }}>
-                {limitDecision.decisionReason}
-              </div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>{limitDecision.decisionReason}</div>
             </div>
           </div>
+
+          {explanation.thinFileNotice && (
+            <div className="alert-box" style={{ fontSize: 12 }}>
+              <strong>Thin File:</strong> {explanation.thinFileNotice}
+            </div>
+          )}
 
           {explanation.adjustments.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -221,7 +235,7 @@ export function WhatIfPanel({
 
           <div className="card" style={{ padding: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--orange-700)', marginBottom: 6 }}>
-              Regenerated Notification Preview ({limitDecision.decisionLabel})
+              Simulated Notification Preview ({limitDecision.decisionLabel})
             </div>
             <div style={{ fontSize: 12, background: 'var(--orange-50)', padding: 8, borderRadius: 6, marginBottom: 6 }}>
               <strong>SMS:</strong> {previewNotifications[0]?.body}
@@ -238,13 +252,13 @@ export function WhatIfPanel({
             {/* Telecom Controls */}
             <div className="card" style={{ padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <strong style={{ color: 'var(--orange-700)' }}>Telecom Behavior (45%)</strong>
+                <strong style={{ color: 'var(--orange-700)' }}>
+                  Telecom Behavior ({config.weights.telecom}%)
+                </strong>
                 <SourceStatusBadge status={explanation.sourceStatuses.telecom} />
               </div>
 
-              <label className="field-label">
-                SIM Tenure: {simMonths} months
-              </label>
+              <label className="field-label">SIM Tenure: {simMonths} months</label>
               <input
                 type="range"
                 min={1}
@@ -323,10 +337,12 @@ export function WhatIfPanel({
               </label>
             </div>
 
-            {/* Identity & Tax Controls */}
+            {/* Identity, Banking & Tax Controls */}
             <div className="card" style={{ padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <strong style={{ color: 'var(--orange-700)' }}>Identity (25%) &amp; Tax (10%)</strong>
+                <strong style={{ color: 'var(--orange-700)' }}>
+                  Identity ({config.weights.identity}%), Bank &amp; Tax ({config.weights.tax}%)
+                </strong>
                 <SourceStatusBadge status={explanation.sourceStatuses.identity} />
               </div>
 
@@ -355,6 +371,19 @@ export function WhatIfPanel({
                     }
                   />
                   Residential Address Verified
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(draft.has_bank_account)}
+                    onChange={(e) =>
+                      applyDraftChange((next) => {
+                        next.has_bank_account = e.target.checked;
+                      })
+                    }
+                  />
+                  Has Bank Account (Neutral — never reduces score)
                 </label>
               </div>
 
@@ -399,7 +428,9 @@ export function WhatIfPanel({
           {/* Unitel Money Controls */}
           <div className="card" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-              <strong style={{ color: 'var(--orange-700)' }}>Mobile Money — Unitel Money (20%)</strong>
+              <strong style={{ color: 'var(--orange-700)' }}>
+                Mobile Money — Unitel Money ({config.weights.mobileMoney}%)
+              </strong>
               <SourceStatusBadge status={explanation.sourceStatuses.mobileMoney} />
             </div>
 
@@ -475,20 +506,17 @@ export function WhatIfPanel({
               </div>
             </div>
 
-            <div style={{ fontSize: 12, marginTop: 8, opacity: 0.85 }}>
+            <div style={{ fontSize: 12, marginTop: 8 }}>
               {draft.mobileMoney?.wallet_exists ? (
                 <>
-                  Tier limits —{' '}
-                  <strong>
-                    {UNITEL_MONEY_TIERS[draft.mobileMoney.registration_level].label}:
-                  </strong>{' '}
-                  Daily up to{' '}
+                  <strong>{UNITEL_MONEY_TIERS[draft.mobileMoney.registration_level].label}:</strong>{' '}
+                  daily up to{' '}
                   {formatAoa(UNITEL_MONEY_TIERS[draft.mobileMoney.registration_level].dailyLimitAoa)},
-                  max balance{' '}
+                  balance up to{' '}
                   {formatAoa(UNITEL_MONEY_TIERS[draft.mobileMoney.registration_level].maxBalanceAoa)}.
                 </>
               ) : (
-                'No Unitel Money wallet — treated as missing/thin without score penalty.'
+                UNITEL_MONEY_UNBANKED_HELPER
               )}
             </div>
           </div>
@@ -496,7 +524,7 @@ export function WhatIfPanel({
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <BandBadge band={explanation.band} />
             <ConfidenceBadge confidence={explanation.confidence} />
-            <span style={{ fontSize: 12, opacity: 0.85 }}>
+            <span style={{ fontSize: 12 }}>
               Active denominator: {explanation.activeDenominator} pts
             </span>
           </div>
@@ -505,4 +533,3 @@ export function WhatIfPanel({
     </div>
   );
 }
-

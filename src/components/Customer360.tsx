@@ -48,14 +48,18 @@ export function Customer360({
   }, [profiles, search]);
 
   const profile = useMemo(
-    () => profiles.find((p) => p.customer.id === selectedCustomerId) ?? profiles[0],
+    () => profiles.find((p) => p.customer.id === selectedCustomerId) ?? profiles[0] ?? null,
     [profiles, selectedCustomerId]
   );
 
-  const explanation = useMemo(() => evaluateCreditScore(profile, config), [profile, config]);
+  const explanation = useMemo(
+    () => (profile ? evaluateCreditScore(profile, config) : null),
+    [profile, config]
+  );
 
   // Deterministic 6-month proxy score history
   const scoreHistory: ScoreHistoryEntry[] = useMemo(() => {
+    if (!profile || !explanation) return [];
     const months = ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'];
     const tenure = profile.telecom ? monthsBetween(profile.telecom.sim_activation_date) : 6;
     return months.map((m, idx) => {
@@ -70,6 +74,15 @@ export function Customer360({
       };
     });
   }, [profile, explanation, config]);
+
+  if (!profile || !explanation) {
+    return (
+      <div className="card" style={{ padding: 28, textAlign: 'center' }}>
+        <h3 className="card-title">No Customers in Database</h3>
+        <p>Create a new application or load sample data from Admin &gt; Data Tools.</p>
+      </div>
+    );
+  }
 
   const mmTier = profile.mobileMoney?.wallet_exists
     ? UNITEL_MONEY_TIERS[profile.mobileMoney.registration_level]
@@ -303,10 +316,21 @@ export function Customer360({
                     90d Txns: <strong>{profile.mobileMoney.txn_count_90d}</strong> (failed:{' '}
                     {profile.mobileMoney.failed_txn_count_90d})
                   </div>
+                  <div>
+                    Bank Account:{' '}
+                    <strong>
+                      {profile.has_bank_account ? 'Yes' : 'No (Neutral — no penalty)'}
+                    </strong>
+                  </div>
                 </div>
               ) : (
                 <div style={{ fontSize: 12.5 }}>
                   No Unitel Money wallet registered. Treated as thin file without score penalty.
+                  Bank account:{' '}
+                  <strong>
+                    {profile.has_bank_account ? 'Yes' : 'No (Neutral — no penalty)'}
+                  </strong>
+                  .
                 </div>
               )}
             </div>

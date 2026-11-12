@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_EMI_PLANS,
+  DEFAULT_EQUIPMENT_CATALOG,
   DEFAULT_SCORING_CONFIG,
+  calculateEmiPlan,
   cloneConfig,
   evaluateCreditScore,
   evaluateLimitAndDecision,
@@ -15,7 +18,7 @@ describe('Unitel Credit Scoring Engine (pure module)', () => {
     return found;
   };
 
-  it('scores Thomas Mateus as Excellent with High confidence and Auto-approves a car', () => {
+  it('scores Thomas Mateus as Excellent with High confidence and suggests Auto-approve candidate for a car EMI', () => {
     const thomas = byName('Thomas Mateus');
     const exp = evaluateCreditScore(thomas, DEFAULT_SCORING_CONFIG);
 
@@ -26,12 +29,20 @@ describe('Unitel Credit Scoring Engine (pure module)', () => {
     expect(exp.meaningfulSourceCount).toBe(4);
     expect(exp.adjustments).toHaveLength(0);
 
-    const decision = evaluateLimitAndDecision(exp, 5_500_000, DEFAULT_SCORING_CONFIG);
+    const carPlan = DEFAULT_EMI_PLANS.find((p) => p.tier === 'high' && p.term_months === 36)!;
+    const emi = calculateEmiPlan(5_500_000, carPlan);
+    const decision = evaluateLimitAndDecision(
+      exp,
+      5_500_000,
+      DEFAULT_SCORING_CONFIG,
+      emi.monthly_emi_aoa
+    );
     expect(decision.creditLimitAoa).toBe(7_500_000);
+    expect(decision.emiAffordable).toBe(true);
     expect(decision.decision).toBe('auto_approve');
   });
 
-  it('treats Maria Cândida basic low-activity wallet as thin-file (no penalty, Medium confidence, Good band)', () => {
+  it('treats Maria Cândida basic low-activity wallet and missing bank account as neutral/thin-file (Medium confidence, Good band)', () => {
     const maria = byName('Maria Cândida');
     const exp = evaluateCreditScore(maria, DEFAULT_SCORING_CONFIG);
 
@@ -40,8 +51,32 @@ describe('Unitel Credit Scoring Engine (pure module)', () => {
     expect(exp.confidence).toBe('Medium');
     expect(exp.meaningfulSourceCount).toBe(2);
     expect(exp.band).toBe('Good');
-    expect(exp.activeDenominator).toBe(80); // 45 + 25 + 10 (20 mobile money removed)
+    expect(exp.activeDenominator).toBe(80);
+    expect(exp.thinFileNotice).toContain('Wallet data is limited (Basic registration)');
+    expect(exp.summaryReasons.some((r) => r.includes('No bank account recorded'))).toBe(true);
     expect(exp.adjustments.some((a) => a.code === 'THIN_FILE_RENORMALIZED')).toBe(true);
+  });
+
+  it('never penalizes a missing bank account (score identical with or without bank account)', () => {
+    const thomasWithBank = structuredClone(byName('Thomas Mateus'));
+    const thomasUnbanked = structuredClone(byName('Thomas Mateus'));
+    thomasWithBank.has_bank_account = true;
+    thomasUnbanked.has_bank_account = false;
+
+    const expA = evaluateCreditScore(thomasWithBank, DEFAULT_SCORING_CONFIG);
+    const expB = evaluateCreditScore(thomasUnbanked, DEFAULT_SCORING_CONFIG);
+    expect(expB.score).toBe(expA.score);
+  });
+
+  it('never changes score formula by volume_tier alone', () => {
+    const lowTier = structuredClone(byName('Maria Cândida'));
+    const highTier = structuredClone(byName('Maria Cândida'));
+    lowTier.customer.volume_tier = 'low';
+    highTier.customer.volume_tier = 'high';
+
+    expect(evaluateCreditScore(lowTier, DEFAULT_SCORING_CONFIG).score).toBe(
+      evaluateCreditScore(highTier, DEFAULT_SCORING_CONFIG).score
+    );
   });
 
   it('scores João Baptista with Low confidence and Poor/Fair band', () => {
@@ -64,7 +99,7 @@ describe('Unitel Credit Scoring Engine (pure module)', () => {
     expect(exp.adjustments.some((a) => a.code === 'BI_NOT_VERIFIED_CAP')).toBe(true);
     expect(exp.adjustments.some((a) => a.code === 'SUSPENDED_NIF_DEDUCTION')).toBe(true);
 
-    const decision = evaluateLimitAndDecision(exp, 280_000, DEFAULT_SCORING_CONFIG);
+    const decision = evaluateLimitAndDecision(exp, 280_000, DEFAULT_SCORING_CONFIG, 30_000);
     expect(decision.decision).toBe('manual_review');
   });
 
@@ -77,11 +112,11 @@ describe('Unitel Credit Scoring Engine (pure module)', () => {
     expect(exp.band).toBe('Poor');
     expect(exp.adjustments.some((a) => a.code === 'UNPAID_LOAN_CAP')).toBe(true);
 
-    const decision = evaluateLimitAndDecision(exp, 280_000, DEFAULT_SCORING_CONFIG);
+    const decision = evaluateLimitAndDecision(exp, 280_000, DEFAULT_SCORING_CONFIG, 30_000);
     expect(decision.decision).toBe('decline');
   });
 
-  it('drops Thomas to 550 (Poor) and Decline when an unpaid airtime loan is toggled in What-If', () => {
+  it('drops Thomas to 550 (Poor) and Decline suggestion when an unpaid airtime loan is toggled in What-If', () => {
     const thomas = structuredClone(byName('Thomas Mateus'));
     thomas.telecom!.airtime_loans_unpaid = 1;
     thomas.telecom!.airtime_loans_repaid_on_time = 3;
@@ -90,7 +125,7 @@ describe('Unitel Credit Scoring Engine (pure module)', () => {
     expect(exp.score).toBe(550);
     expect(exp.band).toBe('Poor');
 
-    const decision = evaluateLimitAndDecision(exp, 5_500_000, DEFAULT_SCORING_CONFIG);
+    const decision = evaluateLimitAndDecision(exp, 5_500_000, DEFAULT_SCORING_CONFIG, 162_000);
     expect(decision.decision).toBe('decline');
   });
 
@@ -102,15 +137,27 @@ describe('Unitel Credit Scoring Engine (pure module)', () => {
     updatedConfig.weights.telecom = 35;
 
     const updatedExp = evaluateCreditScore(maria, updatedConfig);
-    expect(updatedExp.activeDenominator).toBe(70); // 35 + 25 + 10
+    expect(updatedExp.activeDenominator).toBe(70);
     expect(updatedExp.score).not.toBe(defaultExp.score);
   });
 
-  it('generates 300 synthetic Angolan customers with expected thin-file skew', () => {
-    const { profiles, applications, notifications } = generateSeedDataset(DEFAULT_SCORING_CONFIG);
+  it('flags EMI affordability failure when monthly EMI exceeds maxMonthlyEmiAoa', () => {
+    const maria = byName('Maria Cândida');
+    const exp = evaluateCreditScore(maria, DEFAULT_SCORING_CONFIG); // Good + Medium -> limit 1,100,000, max EMI 110,000
+    const decision = evaluateLimitAndDecision(exp, 500_000, DEFAULT_SCORING_CONFIG, 180_000);
+    expect(decision.emiAffordable).toBe(false);
+    expect(decision.decision).toBe('decline');
+  });
+
+  it('generates 300 synthetic Angolan customers, catalog, EMI plans, and audit logs', () => {
+    const { profiles, applications, notifications, auditLogs } = generateSeedDataset(
+      DEFAULT_SCORING_CONFIG,
+      DEFAULT_EQUIPMENT_CATALOG,
+      DEFAULT_EMI_PLANS
+    );
     expect(profiles).toHaveLength(300);
-    expect(applications.length).toBeGreaterThan(10);
+    expect(applications.length).toBeGreaterThanOrEqual(10);
     expect(notifications.length).toBe(applications.length * 2);
+    expect(auditLogs.length).toBe(applications.length);
   });
 });
-

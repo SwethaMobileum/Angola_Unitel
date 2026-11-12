@@ -130,6 +130,7 @@ export function evaluateCreditScore(
   const categories: CategoryBreakdown[] = [];
   const adjustments: AppliedAdjustment[] = [];
   const summaryReasons: string[] = [];
+  let thinFileNotice: string | undefined;
 
   // 1. Telecom Behavior (base 45)
   const telecomBaseTotal = 45;
@@ -426,8 +427,9 @@ export function evaluateCreditScore(
   } else {
     const thinNote =
       statuses.mobileMoney === 'thin'
-        ? 'Basic wallet with little activity — treated as thin file (removed from denominator, no penalty)'
-        : 'No Unitel Money wallet — treated as thin file (removed from denominator, no penalty)';
+        ? 'Wallet data is limited (Basic registration), score is based mainly on telecom data'
+        : 'No Unitel Money wallet — score is based mainly on telecom data (no penalty)';
+    thinFileNotice = thinNote;
 
     parameters.push({
       id: 'mm_thin_placeholder',
@@ -581,6 +583,12 @@ export function evaluateCreditScore(
 
   const band = mapBand(finalScore, config);
 
+  if (profile.has_bank_account === false) {
+    summaryReasons.push(
+      'No bank account recorded — treated as neutral (unbanked subscribers are never penalized).'
+    );
+  }
+
   if (identityExcluded) {
     summaryReasons.push('Identity source missing — KYC cannot be verified.');
   }
@@ -604,6 +612,7 @@ export function evaluateCreditScore(
     parameters,
     adjustments,
     summaryReasons,
+    thinFileNotice,
   };
 }
 

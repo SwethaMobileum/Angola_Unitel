@@ -1,48 +1,88 @@
 import { useState } from 'react';
-import { formatAoa } from '../scoring';
-import type { ApplicationRecord, DecisionOutcome, Role } from '../scoring';
-import { BandBadge, ConfidenceBadge, DecisionBadge } from './Badges';
+import { evaluateCreditScore, formatAoa } from '../scoring';
+import type {
+  ApplicationRecord,
+  ApplicationStatus,
+  CustomerProfile,
+  Role,
+  ScoringConfig,
+} from '../scoring';
+import {
+  BandBadge,
+  ConfidenceBadge,
+  StatusBadge,
+  SuggestedDecisionBadge,
+  VolumeTierBadge,
+} from './Badges';
 
 interface ApprovalsQueueProps {
   applications: ApplicationRecord[];
+  profiles: CustomerProfile[];
+  config: ScoringConfig;
   role: Role;
-  onOverride: (appId: string, decision: DecisionOutcome, reason: string) => void;
-  onInspectCustomer: (customerId: string) => void;
+  onDecision: (
+    appId: string,
+    status: Extract<ApplicationStatus, 'approved' | 'rejected' | 'more_info_requested'>,
+    reason: string
+  ) => void;
+  onOpenDetail: (appId: string) => void;
 }
 
 export function ApprovalsQueue({
   applications,
+  profiles,
+  config,
   role,
-  onOverride,
-  onInspectCustomer,
+  onDecision,
+  onOpenDetail,
 }: ApprovalsQueueProps) {
   const [reasons, setReasons] = useState<Record<string, string>>({});
-  const [filter, setFilter] = useState<'queue' | 'all'>('queue');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [filter, setFilter] = useState<'pending' | 'all'>('pending');
 
-  const items =
-    filter === 'queue'
-      ? applications.filter((a) => a.decision === 'manual_review')
-      : applications;
-
+  const pendingItems = applications.filter(
+    (a) => a.status === 'pending_review' || a.status === 'more_info_requested'
+  );
+  const items = filter === 'pending' ? pendingItems : applications;
   const canAct = role === 'approver' || role === 'admin';
+
+  const handleAction = (
+    appId: string,
+    status: Extract<ApplicationStatus, 'approved' | 'rejected' | 'more_info_requested'>
+  ) => {
+    const reason = (reasons[appId] ?? '').trim();
+    if (!reason) {
+      setErrors((prev) => ({
+        ...prev,
+        [appId]: 'A decision reason is required before approving, rejecting, or requesting info.',
+      }));
+      return;
+    }
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next[appId];
+      return next;
+    });
+    onDecision(appId, status, reason);
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div className="page-header">
         <div>
-          <h2 className="page-title">Approvals Queue</h2>
+          <h2 className="page-title">Approval Queue</h2>
           <p className="page-subtitle">
-            Manual-review applications (Fair band, Low confidence, or slight limit gap). Approver or
-            Admin role can override with an audit reason.
+            Every submitted loan application routes here for final Approver decision. Review volume
+            level, equipment, EMI plan, proxy score reasons, and policy suggestion.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             type="button"
-            className={`btn btn-sm ${filter === 'queue' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setFilter('queue')}
+            className={`btn btn-sm ${filter === 'pending' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setFilter('pending')}
           >
-            Pending Manual Review ({applications.filter((a) => a.decision === 'manual_review').length})
+            Pending Review ({pendingItems.length})
           </button>
           <button
             type="button"
@@ -54,120 +94,147 @@ export function ApprovalsQueue({
         </div>
       </div>
 
-      {!canAct && (
-        <div className="alert-box">
-          You are viewing as <strong>Analyst</strong>. Switch to <strong>Approver</strong> or{' '}
-          <strong>Admin</strong> in the top bar to approve or decline queue items.
-        </div>
-      )}
-
       <div className="card">
         {items.length === 0 ? (
-          <div style={{ padding: 20, textAlign: 'center', opacity: 0.85 }}>
-            No applications currently waiting in the manual review queue.
+          <div style={{ padding: 24, textAlign: 'center' }}>
+            No applications currently waiting in the Approval Queue.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {items.map((app) => (
-              <div
-                key={app.id}
-                className="card-tinted"
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 10,
-                }}
-              >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {items.map((app) => {
+              const profile =
+                app.profile_snapshot ??
+                profiles.find((p) => p.customer.id === app.customer_id);
+              const exp = profile ? evaluateCreditScore(profile, config) : null;
+
+              return (
                 <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: 10,
-                  }}
+                  key={app.id}
+                  className="card-tinted"
+                  style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
                 >
-                  <div>
-                    <strong style={{ fontSize: 15 }}>
-                      {app.id} — {app.customer_name}
-                    </strong>{' '}
-                    <span style={{ fontSize: 12.5 }}>({app.mobile_no})</span>
-                    <div style={{ fontSize: 13, marginTop: 2 }}>
-                      Product: <strong>{app.product}</strong> ({formatAoa(app.product_price_aoa)}) •
-                      Assigned Limit: <strong>{formatAoa(app.credit_limit_aoa)}</strong>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      flexWrap: 'wrap',
+                      gap: 10,
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <strong style={{ fontSize: 16 }}>
+                          {app.id} — {app.customer_name}
+                        </strong>
+                        <VolumeTierBadge tier={app.volume_tier} />
+                        <StatusBadge status={app.status} />
+                      </div>
+                      <div style={{ fontSize: 12.5, marginTop: 4 }}>
+                        Mobile: <strong>{app.mobile_no}</strong> • Equipment:{' '}
+                        <strong>{app.product}</strong> ({formatAoa(app.product_price_aoa)}) • EMI:{' '}
+                        <strong>
+                          {app.emi_term_months}m @ {formatAoa(app.monthly_emi_aoa)}/mo
+                        </strong>{' '}
+                        ({app.emi_affordable ? '✓ Affordable' : '✕ Over cap'})
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: 18 }}>{app.score}</strong>
+                      <BandBadge band={app.band} />
+                      <ConfidenceBadge confidence={app.confidence} />
+                      <SuggestedDecisionBadge decision={app.decision} />
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <strong>Score: {app.score}</strong>
-                    <BandBadge band={app.band} />
-                    <ConfidenceBadge confidence={app.confidence} />
-                    <DecisionBadge decision={app.decision} />
+
+                  {/* Score Breakdown & Reasons inline */}
+                  <div
+                    className="card"
+                    style={{ padding: 12, background: '#FFFFFF', fontSize: 12.5 }}
+                  >
+                    <div style={{ marginBottom: 6 }}>
+                      <strong>Credit Limit:</strong> {formatAoa(app.credit_limit_aoa)} (Max EMI:{' '}
+                      {formatAoa(app.max_monthly_emi_aoa)}/mo) •{' '}
+                      <strong>Policy Suggestion Note:</strong> {app.decision_reason}
+                    </div>
+                    {exp && (
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        {exp.categories.map((c) => (
+                          <span key={c.category}>
+                            <strong>{c.label}:</strong>{' '}
+                            {c.excludedFromDenominator
+                              ? 'Excluded (Thin File)'
+                              : `${c.earnedPoints}/${c.effectiveMaxPoints}`}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {exp?.thinFileNotice && (
+                      <div style={{ marginTop: 4, fontWeight: 600, color: 'var(--orange-700)' }}>
+                        {exp.thinFileNotice}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => onOpenDetail(app.id)}
+                      >
+                        Full Breakdown
+                      </button>
+                      <input
+                        type="text"
+                        className={`input ${errors[app.id] ? 'input-error' : ''}`}
+                        style={{ maxWidth: 360 }}
+                        disabled={!canAct}
+                        placeholder="Required decision reason (e.g. Verified telecom stability)..."
+                        value={reasons[app.id] ?? ''}
+                        onChange={(e) => {
+                          setReasons((prev) => ({ ...prev, [app.id]: e.target.value }));
+                          setErrors((prev) => {
+                            const next = { ...prev };
+                            delete next[app.id];
+                            return next;
+                          });
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={!canAct}
+                        onClick={() => handleAction(app.id, 'approved')}
+                      >
+                        ✓ Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline-orange btn-sm"
+                        disabled={!canAct}
+                        onClick={() => handleAction(app.id, 'more_info_requested')}
+                      >
+                        ◷ Request Info
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={!canAct}
+                        onClick={() => handleAction(app.id, 'rejected')}
+                      >
+                        ✕ Reject
+                      </button>
+                    </div>
+                    {errors[app.id] && <div className="field-error">{errors[app.id]}</div>}
                   </div>
                 </div>
-
-                <div style={{ fontSize: 12.5 }}>
-                  <strong>Routing Reason:</strong> {app.decision_reason}
-                  {app.overridden_by && (
-                    <span style={{ marginLeft: 8, fontWeight: 700 }}>
-                      (Overridden by {app.overridden_by})
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => onInspectCustomer(app.customer_id)}
-                  >
-                    Inspect Customer 360°
-                  </button>
-                  <input
-                    type="text"
-                    className="input"
-                    style={{ maxWidth: 340 }}
-                    disabled={!canAct}
-                    placeholder="Enter approval / decline reason..."
-                    value={reasons[app.id] ?? ''}
-                    onChange={(e) =>
-                      setReasons((prev) => ({ ...prev, [app.id]: e.target.value }))
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-approve btn-sm"
-                    disabled={!canAct}
-                    onClick={() =>
-                      onOverride(
-                        app.id,
-                        'auto_approve',
-                        reasons[app.id]?.trim() || 'Approved by Credit Approver after manual review'
-                      )
-                    }
-                  >
-                    Approve
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-decline btn-sm"
-                    disabled={!canAct}
-                    onClick={() =>
-                      onOverride(
-                        app.id,
-                        'decline',
-                        reasons[app.id]?.trim() || 'Declined by Credit Approver after manual review'
-                      )
-                    }
-                  >
-                    Decline
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
     </div>
   );
 }
-

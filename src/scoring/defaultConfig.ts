@@ -1,48 +1,124 @@
-import type { ProductOption, ScoringConfig } from './types';
+import type { EmiPlanConfig, EquipmentItem, ScoringConfig } from './types';
 
 export const UNITEL_MONEY_TIERS = {
   basic: {
     label: 'Basic registration',
-    requirements: 'Mobile number, full name, date of birth, gender, PIN',
+    requirements:
+      'Active Unitel mobile number, full name, date of birth, gender, mobile PIN created & confirmed, Terms & Conditions accepted (via App, USSD *449#, or Agent/Store)',
     dailyLimitAoa: 25_000,
     maxBalanceAoa: 70_000,
   },
   kyc: {
     label: 'Fully verified (KYC)',
-    requirements: 'Government ID (BI), ID number, date & place of issue, verified address, extra verification',
+    requirements:
+      'Basic fields plus valid Government ID (National ID / Passport), ID number, date & place of issue, residential address, and BNA-compliant additional verification',
     dailyLimitAoa: 300_000,
     maxBalanceAoa: 18_000_000,
   },
 } as const;
 
-export const PRODUCT_CATALOG: ProductOption[] = [
+export const UNITEL_MONEY_UNBANKED_HELPER =
+  'Any active Unitel subscriber can subscribe to Unitel Money, including customers without a bank account. The level of personal information provided at onboarding determines the limits.';
+
+export const DEFAULT_EQUIPMENT_CATALOG: EquipmentItem[] = [
   {
-    id: 'prod-phone',
-    name: 'Smartphone 5G (128GB)',
+    id: 'eq-phone-entry',
     category: 'Phone',
-    defaultPriceAoa: 280_000,
-    description: 'Entry flagship handset with 12-month installment plan',
+    item_name: 'Unitel Smart 4G (64GB) — Demo',
+    price_aoa: 140_000,
+    min_tier: 'low',
+    active: true,
+    description: 'Entry 4G smartphone eligible for Low or High volume tiers',
   },
   {
-    id: 'prod-tv',
-    name: 'Smart TV 55" 4K UHD',
+    id: 'eq-phone-5g',
+    category: 'Phone',
+    item_name: 'Smartphone 5G Pro (128GB) — Demo',
+    price_aoa: 280_000,
+    min_tier: 'low',
+    active: true,
+    description: 'Mid-range 5G handset with installment financing',
+  },
+  {
+    id: 'eq-tv-32',
     category: 'TV',
-    defaultPriceAoa: 650_000,
-    description: 'Home entertainment LED display with 18-month plan',
+    item_name: 'Smart TV 32" HD — Demo',
+    price_aoa: 320_000,
+    min_tier: 'low',
+    active: true,
+    description: 'Compact home LED TV within Basic/Low volume price ceiling',
   },
   {
-    id: 'prod-fridge',
-    name: 'Double-Door Inverter Fridge',
+    id: 'eq-tv-55',
+    category: 'TV',
+    item_name: 'Smart TV 55" 4K UHD — Demo',
+    price_aoa: 650_000,
+    min_tier: 'high',
+    active: true,
+    description: 'Large 4K UHD TV for High volume / KYC tier',
+  },
+  {
+    id: 'eq-fridge',
     category: 'Fridge',
-    defaultPriceAoa: 920_000,
-    description: 'Energy-efficient household appliance with 24-month plan',
+    item_name: 'Double-Door Inverter Fridge — Demo',
+    price_aoa: 920_000,
+    min_tier: 'high',
+    active: true,
+    description: 'Household inverter refrigerator for High volume / KYC tier',
   },
   {
-    id: 'prod-car',
-    name: 'Compact City Car (Financed)',
+    id: 'eq-car',
     category: 'Car',
-    defaultPriceAoa: 5_500_000,
-    description: 'Vehicle equipment financing package up to 48 months',
+    item_name: 'Compact City Car (Financed) — Demo',
+    price_aoa: 5_500_000,
+    min_tier: 'high',
+    active: true,
+    description: 'Vehicle equipment financing package for High volume / KYC tier',
+  },
+];
+
+export const DEFAULT_EMI_PLANS: EmiPlanConfig[] = [
+  {
+    id: 'emi-low-3m',
+    tier: 'low',
+    term_months: 3,
+    interest_rate_pct: 6,
+    min_down_payment_pct: 15,
+  },
+  {
+    id: 'emi-low-6m',
+    tier: 'low',
+    term_months: 6,
+    interest_rate_pct: 9,
+    min_down_payment_pct: 20,
+  },
+  {
+    id: 'emi-high-6m',
+    tier: 'high',
+    term_months: 6,
+    interest_rate_pct: 8,
+    min_down_payment_pct: 10,
+  },
+  {
+    id: 'emi-high-12m',
+    tier: 'high',
+    term_months: 12,
+    interest_rate_pct: 11,
+    min_down_payment_pct: 10,
+  },
+  {
+    id: 'emi-high-24m',
+    tier: 'high',
+    term_months: 24,
+    interest_rate_pct: 13,
+    min_down_payment_pct: 15,
+  },
+  {
+    id: 'emi-high-36m',
+    tier: 'high',
+    term_months: 36,
+    interest_rate_pct: 15,
+    min_down_payment_pct: 15,
   },
 ];
 
@@ -136,30 +212,41 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
       Low: 60_000,
     },
   },
+  priceCeilingsAoa: {
+    low: 500_000,
+    high: 10_000_000,
+  },
+  maxMonthlyEmiRatioOfLimit: 0.1,
   templates: {
     received: {
-      sms: 'Credit Intelligence (Demo): Olá {{customer_name}}, recebemos o pedido #{{application_id}} para {{product}} ({{product_price}}). Avaliação em curso.',
-      emailSubject: '[Demo] Application Received — {{product}} (#{{application_id}})',
+      sms: 'Credit Intelligence (Demo): Olá {{customer_name}}, recebemos o pedido #{{application_id}} para {{product}} ({{product_price}}, EMI {{monthly_emi}}/mês). Em análise.',
+      emailSubject: '[Demo] Application Submitted for Approval — {{product}} (#{{application_id}})',
       emailBody:
-        'Dear {{customer_name}},\n\nWe have received your equipment financing application (#{{application_id}}) for {{product}} priced at {{product_price}}.\n\nProxy Credit Score (demo): {{score}} ({{band}} | Confidence: {{confidence}}).\n\nNote: This is a simulated demo notification.',
+        'Dear {{customer_name}},\n\nYour equipment EMI application (#{{application_id}}) for {{product}} ({{product_price}}) has been submitted to our Credit Approver.\n\nSelected EMI Plan: {{emi_term}} months at {{monthly_emi}}/month\nProxy Credit Score (demo): {{score}} ({{band}} | Confidence: {{confidence}})\n\nNote: This is a simulated demo notification.',
     },
     auto_approve: {
-      sms: 'Credit Intelligence (Demo): Parabéns {{customer_name}}! O pedido #{{application_id}} ({{product}}) foi APROVADO. Limite: {{credit_limit}}.',
-      emailSubject: '[Demo] Approved — {{product}} Financing (#{{application_id}})',
+      sms: 'Credit Intelligence (Demo): Parabéns {{customer_name}}! O pedido #{{application_id}} ({{product}}) foi APROVADO. Limite: {{credit_limit}}, EMI: {{monthly_emi}}/mês.',
+      emailSubject: '[Demo] Approved — {{product}} EMI Plan (#{{application_id}})',
       emailBody:
-        'Dear {{customer_name}},\n\nGood news! Your application (#{{application_id}}) for {{product}} ({{product_price}}) has been APPROVED.\n\nAssigned Credit Limit: {{credit_limit}}\nProxy Credit Score (demo): {{score}} — {{band}} (Data Confidence: {{confidence}})\nReason: {{decision_reason}}\n\nNote: Simulated demo message; not a regulated credit offer.',
+        'Dear {{customer_name}},\n\nGood news! Your application (#{{application_id}}) for {{product}} ({{product_price}}) has been APPROVED.\n\nAssigned Credit Limit: {{credit_limit}}\nEMI Plan: {{emi_term}} months • Monthly EMI: {{monthly_emi}}\nProxy Credit Score (demo): {{score}} — {{band}} (Data Confidence: {{confidence}})\nDecision Note: {{decision_reason}}\n\nNote: Simulated demo message; not a regulated credit offer.',
     },
     manual_review: {
-      sms: 'Credit Intelligence (Demo): Olá {{customer_name}}, o pedido #{{application_id}} ({{product}}) está em revisão manual. Entraremos em contacto.',
-      emailSubject: '[Demo] Manual Review Required — {{product}} (#{{application_id}})',
+      sms: 'Credit Intelligence (Demo): Olá {{customer_name}}, o pedido #{{application_id}} ({{product}}) está em revisão pelo Aprovador.',
+      emailSubject: '[Demo] Under Approver Review — {{product}} (#{{application_id}})',
       emailBody:
-        'Dear {{customer_name}},\n\nYour application (#{{application_id}}) for {{product}} ({{product_price}}) has been routed for manual credit analyst review.\n\nProxy Credit Score (demo): {{score}} — {{band}} (Data Confidence: {{confidence}})\nIndicative Limit: {{credit_limit}}\nReason: {{decision_reason}}\n\nNote: Simulated demo message.',
+        'Dear {{customer_name}},\n\nYour application (#{{application_id}}) for {{product}} ({{product_price}}) is under Approver review.\n\nProxy Credit Score (demo): {{score}} — {{band}} (Data Confidence: {{confidence}})\nIndicative Limit: {{credit_limit}} • Monthly EMI: {{monthly_emi}}\nNote: {{decision_reason}}\n\nNote: Simulated demo message.',
     },
     decline: {
-      sms: 'Credit Intelligence (Demo): Olá {{customer_name}}, o pedido #{{application_id}} ({{product}}) não foi aprovado neste momento. Motivo: {{decision_reason}}.',
-      emailSubject: '[Demo] Application Update — {{product}} (#{{application_id}})',
+      sms: 'Credit Intelligence (Demo): Olá {{customer_name}}, o pedido #{{application_id}} ({{product}}) não foi aprovado. Motivo: {{decision_reason}}.',
+      emailSubject: '[Demo] Application Decision — {{product}} (#{{application_id}})',
       emailBody:
         'Dear {{customer_name}},\n\nWe are unable to approve your application (#{{application_id}}) for {{product}} ({{product_price}}) under current demo credit rules.\n\nProxy Credit Score (demo): {{score}} — {{band}} (Data Confidence: {{confidence}})\nEligible Limit: {{credit_limit}}\nReason: {{decision_reason}}\n\nNote: Simulated demo message.',
+    },
+    more_info_requested: {
+      sms: 'Credit Intelligence (Demo): Olá {{customer_name}}, precisamos de informação adicional para o pedido #{{application_id}}. Motivo: {{decision_reason}}.',
+      emailSubject: '[Demo] More Information Requested — {{product}} (#{{application_id}})',
+      emailBody:
+        'Dear {{customer_name}},\n\nOur Credit Approver requested additional information before finalizing application #{{application_id}} for {{product}}.\n\nNote: {{decision_reason}}\n\nNote: Simulated demo message.',
     },
   },
 };
@@ -167,4 +254,3 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
 export function cloneConfig(config: ScoringConfig): ScoringConfig {
   return JSON.parse(JSON.stringify(config)) as ScoringConfig;
 }
-

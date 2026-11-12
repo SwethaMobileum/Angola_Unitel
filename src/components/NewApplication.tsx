@@ -1,635 +1,1607 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  PRODUCT_CATALOG,
   UNITEL_MONEY_TIERS,
-  buildNotificationDrafts,
+  UNITEL_MONEY_UNBANKED_HELPER,
+  calculateEmiPlan,
   evaluateCreditScore,
   evaluateLimitAndDecision,
   formatAoa,
 } from '../scoring';
 import type {
+  ApplicationData,
   ApplicationRecord,
+  AuditLogEntry,
   CustomerProfile,
-  DecisionOutcome,
-  NotificationRecord,
+  EmiPlanConfig,
+  EquipmentItem,
+  IdDocumentType,
+  NifStatus,
+  RegistrationChannel,
   Role,
   ScoringConfig,
+  TaxFilingStatus,
+  VolumeTier,
 } from '../scoring';
-import { BandBadge, ConfidenceBadge, DecisionBadge, SourceStatusBadge } from './Badges';
+import {
+  BandBadge,
+  ConfidenceBadge,
+  StatusBadge,
+  SuggestedDecisionBadge,
+  SourceStatusBadge,
+  VolumeTierBadge,
+} from './Badges';
 import { ScoreExplanationView } from './ScoreExplanationView';
 import { WhatIfPanel } from './WhatIfPanel';
 
 interface NewApplicationProps {
   profiles: CustomerProfile[];
   config: ScoringConfig;
+  catalog: EquipmentItem[];
+  emiPlans: EmiPlanConfig[];
   role: Role;
   initialCustomerId?: string;
   onSubmitApplication: (
     app: ApplicationRecord,
-    notifications: NotificationRecord[]
+    newOrUpdatedProfile: CustomerProfile,
+    auditEntries: AuditLogEntry[]
   ) => void;
-  onUpdateApplicationAndNotifications: (
-    updatedProfile: CustomerProfile,
-    updatedApp: ApplicationRecord,
-    newNotifications: NotificationRecord[]
-  ) => void;
-  onOverrideDecision: (
-    appId: string,
-    decision: DecisionOutcome,
-    reason: string
-  ) => void;
+  onSaveWhatIfVersion: (sourceApp: ApplicationRecord, updatedProfile: CustomerProfile) => void;
+  onToast: (msg: string) => void;
 }
 
-const STEPS = [
-  '1. Application',
-  '2. Data Collection',
-  '3. Proxy Rating',
-  '4. Credit Limit',
-  '5. Decision',
-  '6. Notifications',
+const DRAFT_STORAGE_KEY = 'unitel_ci_app_draft_v1';
+
+const STEP_LABELS = [
+  '1. Customer Details',
+  '2. Transaction Volume',
+  '3. Equipment & Price',
+  '4. EMI Plan',
+  '5. Database & Sources',
+  '6. Review & Submit',
 ];
+
+interface DraftState {
+  step: number;
+  // Step 1
+  fullName: string;
+  mobileNo: string;
+  biNumber: string;
+  dateOfBirth: string;
+  gender: 'M' | 'F';
+  city: string;
+  address: string;
+  // Step 2
+  volumeTier: VolumeTier;
+  registrationChannel: RegistrationChannel;
+  pinCreated: boolean;
+  termsAccepted: boolean;
+  walletBalanceAoa: number;
+  dailyTxnAoa: number;
+  idDocType: IdDocumentType;
+  idNumber: string;
+  idIssueDate: string;
+  idIssuePlace: string;
+  residentialAddress: string;
+  additionalKycVerified: boolean;
+  // Step 3
+  useCustomEquipment: boolean;
+  selectedEquipmentId: string;
+  customItemName: string;
+  equipmentPriceAoa: number;
+  // Step 4
+  selectedEmiPlanId: string;
+  // Step 5 (Source data)
+  matchedCustomerId: string | null;
+  simActivationDate: string;
+  avgMonthlyTopupAoa: number;
+  topupMonthsLast12: number;
+  avgMonthlySpendAoa: number;
+  spendVariability: number;
+  airtimeLoansTaken: number;
+  airtimeLoansRepaidOnTime: number;
+  airtimeLoansUnpaid: number;
+  simRegisteredWithBi: boolean;
+  walletExists: boolean;
+  monthlyInflowAoa: number;
+  monthlyOutflowAoa: number;
+  txnCount90d: number;
+  failedTxnCount90d: number;
+  hasBankAccount: boolean;
+  idVerified: boolean;
+  addressVerified: boolean;
+  nifStatus: NifStatus;
+  taxFilingStatus: TaxFilingStatus;
+}
+
+function createEmptyDraft(catalog: EquipmentItem[], emiPlans: EmiPlanConfig[]): DraftState {
+  const defaultEq = catalog.find((c) => c.min_tier === 'low' && c.active) ?? catalog[0];
+  const defaultPlan = emiPlans.find((p) => p.tier === 'low') ?? emiPlans[0];
+  return {
+    step: 0,
+    fullName: '',
+    mobileNo: '+244 923 ',
+    biNumber: '',
+    dateOfBirth: '1992-05-15',
+    gender: 'M',
+    city: 'Luanda',
+    address: '',
+    volumeTier: 'low',
+    registrationChannel: 'app',
+    pinCreated: true,
+    termsAccepted: true,
+    walletBalanceAoa: 5_000,
+    dailyTxnAoa: 2_500,
+    idDocType: 'BI',
+    idNumber: '',
+    idIssueDate: '2022-03-10',
+    idIssuePlace: 'Luanda',
+    residentialAddress: '',
+    additionalKycVerified: false,
+    useCustomEquipment: false,
+    selectedEquipmentId: defaultEq?.id ?? '',
+    customItemName: '',
+    equipmentPriceAoa: defaultEq?.price_aoa ?? 140_000,
+    selectedEmiPlanId: defaultPlan?.id ?? '',
+    matchedCustomerId: null,
+    simActivationDate: '2024-06-01',
+    avgMonthlyTopupAoa: 10_000,
+    topupMonthsLast12: 9,
+    avgMonthlySpendAoa: 8_500,
+    spendVariability: 0.25,
+    airtimeLoansTaken: 1,
+    airtimeLoansRepaidOnTime: 1,
+    airtimeLoansUnpaid: 0,
+    simRegisteredWithBi: true,
+    walletExists: true,
+    monthlyInflowAoa: 15_000,
+    monthlyOutflowAoa: 12_000,
+    txnCount90d: 8,
+    failedTxnCount90d: 0,
+    hasBankAccount: false,
+    idVerified: true,
+    addressVerified: false,
+    nifStatus: 'none',
+    taxFilingStatus: 'none',
+  };
+}
+
+function normalizePhone(phone: string): string {
+  return phone.replace(/\s+/g, '').trim();
+}
+
+export function isValidUnitelMobile(phone: string): boolean {
+  return /^\+244\s?9\d{2}\s?\d{3}\s?\d{3}$/.test(phone.trim());
+}
 
 export function NewApplication({
   profiles,
   config,
+  catalog,
+  emiPlans,
   role,
   initialCustomerId,
   onSubmitApplication,
-  onUpdateApplicationAndNotifications,
-  onOverrideDecision,
+  onSaveWhatIfVersion,
+  onToast,
 }: NewApplicationProps) {
-  const [step, setStep] = useState(0);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(
-    initialCustomerId || profiles[0]?.customer.id || 'cust-001'
-  );
-  const [selectedProductId, setSelectedProductId] = useState<string>('prod-car');
-  const [customPriceAoa, setCustomPriceAoa] = useState<number>(
-    PRODUCT_CATALOG.find((p) => p.id === 'prod-car')?.defaultPriceAoa ?? 5_500_000
-  );
+  const [draft, setDraft] = useState<DraftState>(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (saved) return JSON.parse(saved) as DraftState;
+    } catch {
+      // ignore
+    }
+    return createEmptyDraft(catalog, emiPlans);
+  });
 
-  // Step 2 source fetch simulation state
-  const [fetchDone, setFetchDone] = useState(false);
-  const [fetchedCount, setFetchedCount] = useState(0);
+  const [lookupMobile, setLookupMobile] = useState('');
+  const [lookupMessage, setLookupMessage] = useState('');
+  const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
+  const [submittedResult, setSubmittedResult] = useState<{
+    app: ApplicationRecord;
+    profile: CustomerProfile;
+  } | null>(null);
 
-  // Committed application in this flow
-  const [submittedApp, setSubmittedApp] = useState<ApplicationRecord | null>(null);
-  const [generatedNotifications, setGeneratedNotifications] = useState<NotificationRecord[]>([]);
-  const [overrideReason, setOverrideReason] = useState('');
-
+  // Auto-save draft
   useEffect(() => {
-    if (initialCustomerId) {
-      setSelectedCustomerId(initialCustomerId);
-      setStep(0);
-      setSubmittedApp(null);
-      setFetchDone(false);
+    if (submittedResult) return;
+    try {
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch {
+      // ignore
+    }
+  }, [draft, submittedResult]);
+
+  // Pre-fill if launched for a specific customer
+  useEffect(() => {
+    if (!initialCustomerId) return;
+    const found = profiles.find((p) => p.customer.id === initialCustomerId);
+    if (found) {
+      applyProfileToDraft(found, true);
+      setSubmittedResult(null);
     }
   }, [initialCustomerId]);
 
-  const filteredCustomers = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    if (!q) return profiles.slice(0, 25);
-    return profiles
-      .filter(
-        (p) =>
-          p.customer.full_name.toLowerCase().includes(q) ||
-          p.customer.mobile_no.toLowerCase().includes(q) ||
-          p.customer.bi_number.toLowerCase().includes(q)
-      )
-      .slice(0, 25);
-  }, [profiles, searchTerm]);
+  const applyProfileToDraft = (profile: CustomerProfile, includeIdentityFields: boolean) => {
+    const tier: VolumeTier =
+      profile.customer.volume_tier ??
+      (profile.mobileMoney?.registration_level === 'kyc' ? 'high' : 'low');
 
-  const selectedProfile = useMemo(
-    () => profiles.find((p) => p.customer.id === selectedCustomerId) ?? profiles[0],
-    [profiles, selectedCustomerId]
-  );
+    const eligibleEq =
+      catalog.filter((c) => c.active && (tier === 'high' || c.min_tier === 'low'))[0] ?? catalog[0];
+    const eligiblePlan = emiPlans.find((p) => p.tier === tier) ?? emiPlans[0];
 
-  const selectedProduct = useMemo(
-    () => PRODUCT_CATALOG.find((p) => p.id === selectedProductId) ?? PRODUCT_CATALOG[0],
-    [selectedProductId]
-  );
-
-  const explanation = useMemo(
-    () => evaluateCreditScore(selectedProfile, config),
-    [selectedProfile, config]
-  );
-
-  const limitDecision = useMemo(
-    () => evaluateLimitAndDecision(explanation, customPriceAoa, config),
-    [explanation, customPriceAoa, config]
-  );
-
-  // Trigger animated source collection when entering step 1 (Data Collection)
-  useEffect(() => {
-    if (step !== 1 || fetchDone) return;
-    setFetchedCount(0);
-    const timers = [1, 2, 3, 4].map((idx) =>
-      window.setTimeout(() => {
-        setFetchedCount(idx);
-        if (idx === 4) setFetchDone(true);
-      }, idx * 240)
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [step, fetchDone]);
-
-  const handleProductChange = (prodId: string) => {
-    setSelectedProductId(prodId);
-    const prod = PRODUCT_CATALOG.find((p) => p.id === prodId);
-    if (prod) setCustomPriceAoa(prod.defaultPriceAoa);
+    setDraft((prev) => ({
+      ...prev,
+      ...(includeIdentityFields
+        ? {
+            fullName: profile.customer.full_name,
+            mobileNo: profile.customer.mobile_no,
+            biNumber: profile.customer.bi_number,
+            dateOfBirth: profile.customer.date_of_birth,
+            gender: profile.customer.gender,
+            city: profile.customer.city,
+            address: profile.customer.address ?? profile.identity?.address ?? '',
+            volumeTier: tier,
+            idNumber: profile.customer.bi_number,
+            idIssueDate: profile.identity?.id_issue_date ?? '2022-01-15',
+            idIssuePlace: profile.identity?.id_issue_place ?? profile.customer.city,
+            residentialAddress: profile.customer.address ?? profile.identity?.address ?? '',
+            additionalKycVerified: tier === 'high' && Boolean(profile.identity?.id_verified),
+            selectedEquipmentId: eligibleEq?.id ?? prev.selectedEquipmentId,
+            equipmentPriceAoa: eligibleEq?.price_aoa ?? prev.equipmentPriceAoa,
+            selectedEmiPlanId: eligiblePlan?.id ?? prev.selectedEmiPlanId,
+          }
+        : {}),
+      matchedCustomerId: profile.customer.id,
+      walletBalanceAoa: profile.mobileMoney?.avg_balance_aoa ?? 0,
+      dailyTxnAoa: profile.mobileMoney?.daily_txn_aoa ?? 0,
+      simActivationDate: profile.telecom?.sim_activation_date ?? '2024-06-01',
+      avgMonthlyTopupAoa: profile.telecom?.avg_monthly_topup_aoa ?? 0,
+      topupMonthsLast12: profile.telecom?.topup_months_last_12 ?? 0,
+      avgMonthlySpendAoa: profile.telecom?.avg_monthly_spend_aoa ?? 0,
+      spendVariability: profile.telecom?.spend_variability ?? 0.35,
+      airtimeLoansTaken: profile.telecom?.airtime_loans_taken ?? 0,
+      airtimeLoansRepaidOnTime: profile.telecom?.airtime_loans_repaid_on_time ?? 0,
+      airtimeLoansUnpaid: profile.telecom?.airtime_loans_unpaid ?? 0,
+      simRegisteredWithBi: Boolean(profile.telecom?.sim_registered_with_bi),
+      walletExists: Boolean(profile.mobileMoney?.wallet_exists),
+      monthlyInflowAoa: profile.mobileMoney?.monthly_inflow_aoa ?? 0,
+      monthlyOutflowAoa: profile.mobileMoney?.monthly_outflow_aoa ?? 0,
+      txnCount90d: profile.mobileMoney?.txn_count_90d ?? 0,
+      failedTxnCount90d: profile.mobileMoney?.failed_txn_count_90d ?? 0,
+      hasBankAccount: Boolean(profile.has_bank_account),
+      idVerified: Boolean(profile.identity?.id_verified),
+      addressVerified: Boolean(profile.identity?.address_verified),
+      nifStatus: profile.tax?.nif_status ?? 'none',
+      taxFilingStatus: profile.tax?.tax_filing_status ?? 'none',
+    }));
   };
 
-  const handleCommitDecisionAndNotify = () => {
-    const appId = submittedApp?.id ?? `APP-${Math.floor(2000 + Math.random() * 7999)}`;
+  // Match mobile number against database whenever entering step 4 (Step 5: Database & Sources)
+  const dbMatch = useMemo(() => {
+    const norm = normalizePhone(draft.mobileNo);
+    if (!norm) return null;
+    return profiles.find((p) => normalizePhone(p.customer.mobile_no) === norm) ?? null;
+  }, [profiles, draft.mobileNo]);
+
+  const handleFindByMobile = () => {
+    const norm = normalizePhone(lookupMobile || draft.mobileNo);
+    const found = profiles.find((p) => normalizePhone(p.customer.mobile_no) === norm);
+    if (found) {
+      applyProfileToDraft(found, true);
+      setLookupMessage(`Pre-filled details for ${found.customer.full_name} (${found.customer.mobile_no}).`);
+      setStepErrors({});
+    } else {
+      setLookupMessage('No existing subscriber matched that number — you can enter a brand-new customer below.');
+    }
+  };
+
+  // Filtered equipment & EMI plans for chosen volume tier
+  const priceCeiling = config.priceCeilingsAoa[draft.volumeTier];
+  const filteredCatalog = useMemo(
+    () =>
+      catalog.filter(
+        (item) =>
+          item.active &&
+          item.price_aoa <= priceCeiling &&
+          (draft.volumeTier === 'high' || item.min_tier === 'low')
+      ),
+    [catalog, draft.volumeTier, priceCeiling]
+  );
+
+  const filteredEmiPlans = useMemo(
+    () => emiPlans.filter((p) => p.tier === draft.volumeTier),
+    [emiPlans, draft.volumeTier]
+  );
+
+  const selectedPlan = useMemo(
+    () =>
+      filteredEmiPlans.find((p) => p.id === draft.selectedEmiPlanId) ??
+      filteredEmiPlans[0] ??
+      emiPlans[0],
+    [filteredEmiPlans, draft.selectedEmiPlanId, emiPlans]
+  );
+
+  const emiCalc = useMemo(
+    () => calculateEmiPlan(draft.equipmentPriceAoa, selectedPlan),
+    [draft.equipmentPriceAoa, selectedPlan]
+  );
+
+  const activeEquipmentName = useMemo(() => {
+    if (draft.useCustomEquipment) {
+      return draft.customItemName.trim() || 'Custom Equipment (Demo)';
+    }
+    return (
+      catalog.find((c) => c.id === draft.selectedEquipmentId)?.item_name ??
+      filteredCatalog[0]?.item_name ??
+      'Equipment Item'
+    );
+  }, [draft.useCustomEquipment, draft.customItemName, draft.selectedEquipmentId, catalog, filteredCatalog]);
+
+  // Construct live CustomerProfile from draft inputs
+  const liveProfile: CustomerProfile = useMemo(() => {
+    const custId = dbMatch?.customer.id ?? `cust-new-${normalizePhone(draft.mobileNo).replace(/\D/g, '') || '000'}`;
+    const regLevel = draft.volumeTier === 'high' ? 'kyc' : 'basic';
+    return {
+      customer: {
+        id: custId,
+        mobile_no: draft.mobileNo.trim(),
+        full_name: draft.fullName.trim() || 'New Subscriber',
+        bi_number: draft.biNumber.trim().toUpperCase(),
+        date_of_birth: draft.dateOfBirth,
+        gender: draft.gender,
+        city: draft.city,
+        address: draft.address.trim(),
+        volume_tier: draft.volumeTier,
+      },
+      has_bank_account: draft.hasBankAccount,
+      telecom: {
+        mobile_no: draft.mobileNo.trim(),
+        sim_activation_date: draft.simActivationDate,
+        avg_monthly_topup_aoa: draft.avgMonthlyTopupAoa,
+        topup_months_last_12: draft.topupMonthsLast12,
+        avg_monthly_spend_aoa: draft.avgMonthlySpendAoa,
+        spend_variability: draft.spendVariability,
+        airtime_loans_taken: draft.airtimeLoansTaken,
+        airtime_loans_repaid_on_time: draft.airtimeLoansRepaidOnTime,
+        airtime_loans_unpaid: draft.airtimeLoansUnpaid,
+        sim_registered_with_bi: draft.simRegisteredWithBi,
+      },
+      mobileMoney: {
+        mobile_no: draft.mobileNo.trim(),
+        wallet_exists: draft.walletExists,
+        registration_level: regLevel,
+        monthly_inflow_aoa: draft.walletExists ? draft.monthlyInflowAoa : 0,
+        monthly_outflow_aoa: draft.walletExists ? draft.monthlyOutflowAoa : 0,
+        avg_balance_aoa: draft.walletExists ? draft.walletBalanceAoa : 0,
+        daily_txn_aoa: draft.walletExists ? draft.dailyTxnAoa : 0,
+        txn_count_90d: draft.walletExists ? draft.txnCount90d : 0,
+        failed_txn_count_90d: draft.walletExists ? draft.failedTxnCount90d : 0,
+      },
+      identity: {
+        mobile_no: draft.mobileNo.trim(),
+        bi_number: draft.biNumber.trim().toUpperCase(),
+        id_verified: draft.idVerified,
+        id_issue_date: draft.volumeTier === 'high' ? draft.idIssueDate || null : null,
+        id_issue_place: draft.volumeTier === 'high' ? draft.idIssuePlace || null : null,
+        address: draft.residentialAddress.trim() || draft.address.trim(),
+        address_verified: draft.addressVerified,
+      },
+      tax: {
+        mobile_no: draft.mobileNo.trim(),
+        nif: draft.biNumber.trim().toUpperCase(),
+        nif_status: draft.nifStatus,
+        tax_filing_status: draft.taxFilingStatus,
+      },
+    };
+  }, [draft, dbMatch]);
+
+  const liveExplanation = useMemo(
+    () => evaluateCreditScore(liveProfile, config),
+    [liveProfile, config]
+  );
+
+  const liveDecision = useMemo(
+    () =>
+      evaluateLimitAndDecision(
+        liveExplanation,
+        draft.equipmentPriceAoa,
+        config,
+        emiCalc.monthly_emi_aoa
+      ),
+    [liveExplanation, draft.equipmentPriceAoa, config, emiCalc.monthly_emi_aoa]
+  );
+
+  const validateStep = (targetStep: number): boolean => {
+    const errors: Record<string, string> = {};
+    if (targetStep === 0) {
+      if (!draft.fullName.trim()) errors.fullName = 'Full name is required.';
+      if (!isValidUnitelMobile(draft.mobileNo)) {
+        errors.mobileNo = 'Enter a valid Unitel Angola number (+244 9XX XXX XXX).';
+      }
+      if (draft.biNumber.trim().length !== 14) {
+        errors.biNumber = 'BI number must be exactly 14 characters (e.g. 004198201LA041).';
+      }
+      if (!draft.dateOfBirth) errors.dateOfBirth = 'Date of birth is required.';
+      if (!draft.address.trim()) errors.address = 'Address is required.';
+    }
+
+    if (targetStep === 1) {
+      const tierLimits =
+        draft.volumeTier === 'low' ? UNITEL_MONEY_TIERS.basic : UNITEL_MONEY_TIERS.kyc;
+      if (!draft.pinCreated) errors.pinCreated = 'Mobile PIN creation & confirmation is required.';
+      if (!draft.termsAccepted) errors.termsAccepted = 'Terms & Conditions acceptance is required.';
+      if (draft.walletBalanceAoa > tierLimits.maxBalanceAoa) {
+        errors.walletBalanceAoa = `Wallet balance (${formatAoa(draft.walletBalanceAoa)}) exceeds the ${tierLimits.label} limit of ${formatAoa(tierLimits.maxBalanceAoa)}.`;
+      }
+      if (draft.dailyTxnAoa > tierLimits.dailyLimitAoa) {
+        errors.dailyTxnAoa = `Daily transaction amount (${formatAoa(draft.dailyTxnAoa)}) exceeds the ${tierLimits.label} daily limit of ${formatAoa(tierLimits.dailyLimitAoa)}.`;
+      }
+      if (draft.volumeTier === 'high') {
+        if (!draft.idNumber.trim()) errors.idNumber = 'ID number is required for Enhanced KYC.';
+        if (!draft.idIssueDate) errors.idIssueDate = 'ID issue date is required.';
+        if (!draft.idIssuePlace.trim()) errors.idIssuePlace = 'ID place of issue is required.';
+        if (!draft.residentialAddress.trim()) {
+          errors.residentialAddress = 'Residential address is required for Enhanced KYC.';
+        }
+      }
+    }
+
+    if (targetStep === 2) {
+      if (draft.useCustomEquipment && !draft.customItemName.trim()) {
+        errors.customItemName = 'Enter a custom equipment name.';
+      }
+      if (draft.equipmentPriceAoa <= 0) {
+        errors.equipmentPriceAoa = 'Price must be greater than 0 AOA.';
+      } else if (draft.equipmentPriceAoa > priceCeiling) {
+        errors.equipmentPriceAoa = `Price (${formatAoa(draft.equipmentPriceAoa)}) exceeds the ${draft.volumeTier.toUpperCase()} volume ceiling of ${formatAoa(priceCeiling)}.`;
+      }
+    }
+
+    setStepErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const goToStep = (nextStep: number) => {
+    if (nextStep > draft.step && !validateStep(draft.step)) {
+      onToast('Please fix the highlighted validation fields before continuing.');
+      return;
+    }
+
+    // Auto-fetch from DB when entering Step 5 (index 4) if mobile matches a stored customer
+    if (nextStep === 4 && dbMatch && draft.matchedCustomerId !== dbMatch.customer.id) {
+      applyProfileToDraft(dbMatch, false);
+      onToast(`Fetched 4 data sources for ${dbMatch.customer.full_name} from subscriber database.`);
+    }
+
+    setStepErrors({});
+    setDraft((prev) => ({ ...prev, step: nextStep }));
+  };
+
+  const handleVolumeTierChange = (tier: VolumeTier) => {
+    const ceiling = config.priceCeilingsAoa[tier];
+    const nextCatalog = catalog.filter(
+      (c) => c.active && c.price_aoa <= ceiling && (tier === 'high' || c.min_tier === 'low')
+    );
+    const nextEq = nextCatalog[0];
+    const nextPlan = emiPlans.find((p) => p.tier === tier) ?? emiPlans[0];
+
+    setStepErrors({});
+    setDraft((prev) => ({
+      ...prev,
+      volumeTier: tier,
+      idNumber: prev.idNumber || prev.biNumber,
+      residentialAddress: prev.residentialAddress || prev.address,
+      selectedEquipmentId: nextEq?.id ?? prev.selectedEquipmentId,
+      equipmentPriceAoa: nextEq?.price_aoa ?? prev.equipmentPriceAoa,
+      selectedEmiPlanId: nextPlan?.id ?? prev.selectedEmiPlanId,
+    }));
+  };
+
+  const handleFinalSubmit = () => {
     const now = new Date().toISOString();
+    const appId = `APP-${Math.floor(2000 + Math.random() * 7999)}`;
+    const appData: ApplicationData = {
+      registration_channel: draft.registrationChannel,
+      pin_created: draft.pinCreated,
+      terms_accepted: draft.termsAccepted,
+      id_doc_type: draft.volumeTier === 'high' ? draft.idDocType : undefined,
+      id_number: draft.volumeTier === 'high' ? draft.idNumber : undefined,
+      id_issue_date: draft.volumeTier === 'high' ? draft.idIssueDate : undefined,
+      id_issue_place: draft.volumeTier === 'high' ? draft.idIssuePlace : undefined,
+      residential_address: draft.residentialAddress || draft.address,
+      additional_kyc_verified: draft.volumeTier === 'high' ? draft.additionalKycVerified : false,
+      has_bank_account: draft.hasBankAccount,
+      daily_txn_aoa: draft.dailyTxnAoa,
+    };
+
     const app: ApplicationRecord = {
       id: appId,
-      customer_id: selectedProfile.customer.id,
-      customer_name: selectedProfile.customer.full_name,
-      mobile_no: selectedProfile.customer.mobile_no,
-      product: selectedProduct.name,
-      product_price_aoa: customPriceAoa,
-      status:
-        limitDecision.decision === 'auto_approve'
-          ? 'approved'
-          : limitDecision.decision === 'manual_review'
-            ? 'pending_review'
-            : 'declined',
-      score: explanation.score,
-      band: explanation.band,
-      confidence: explanation.confidence,
-      credit_limit_aoa: limitDecision.creditLimitAoa,
-      decision: limitDecision.decision,
-      decision_reason: limitDecision.decisionReason,
+      customer_id: liveProfile.customer.id,
+      customer_name: liveProfile.customer.full_name,
+      mobile_no: liveProfile.customer.mobile_no,
+      volume_tier: draft.volumeTier,
+      equipment_id: draft.useCustomEquipment ? undefined : draft.selectedEquipmentId,
+      product: activeEquipmentName,
+      product_price_aoa: draft.equipmentPriceAoa,
+      emi_term_months: emiCalc.term_months,
+      emi_rate_pct: emiCalc.interest_rate_pct,
+      down_payment_aoa: emiCalc.down_payment_aoa,
+      monthly_emi_aoa: emiCalc.monthly_emi_aoa,
+      total_payable_aoa: emiCalc.total_payable_aoa,
+      emi_affordable: liveDecision.emiAffordable,
+      max_monthly_emi_aoa: liveDecision.maxMonthlyEmiAoa,
+      status: 'pending_review', // Always routes to Approver for final decision
+      score: liveExplanation.score,
+      band: liveExplanation.band,
+      confidence: liveExplanation.confidence,
+      credit_limit_aoa: liveDecision.creditLimitAoa,
+      decision: liveDecision.decision,
+      decision_reason: liveDecision.decisionReason,
+      created_by_role: role,
+      score_config_version: config.version,
+      application_data: appData,
+      profile_snapshot: liveProfile,
       created_at: now,
     };
 
-    const receivedNotifs = buildNotificationDrafts(app, 'received', config, now);
-    const outcomeNotifs = buildNotificationDrafts(app, limitDecision.decision, config, now);
-    const allNotifs = [...outcomeNotifs, ...receivedNotifs];
+    const auditEntries: AuditLogEntry[] = [
+      {
+        id: `audit-${appId}-1`,
+        application_id: appId,
+        step_name: 'Customer & Volume Onboarding',
+        inputs_snapshot: {
+          full_name: app.customer_name,
+          mobile_no: app.mobile_no,
+          volume_tier: app.volume_tier,
+          channel: appData.registration_channel,
+          has_bank_account: appData.has_bank_account,
+        },
+        score_config_version: config.version,
+        decision: 'captured',
+        decision_reason: `Volume tier: ${app.volume_tier}`,
+        role,
+        timestamp: now,
+      },
+      {
+        id: `audit-${appId}-2`,
+        application_id: appId,
+        step_name: 'Equipment, EMI & Scoring Evaluation',
+        inputs_snapshot: {
+          product: app.product,
+          price_aoa: app.product_price_aoa,
+          emi_term_months: app.emi_term_months,
+          monthly_emi_aoa: app.monthly_emi_aoa,
+          confidence: app.confidence,
+        },
+        score_config_version: config.version,
+        score: app.score,
+        decision: app.decision,
+        decision_reason: app.decision_reason,
+        role,
+        timestamp: now,
+      },
+      {
+        id: `audit-${appId}-3`,
+        application_id: appId,
+        step_name: 'Submitted to Approver Queue',
+        inputs_snapshot: { status: 'pending_review' },
+        score_config_version: config.version,
+        score: app.score,
+        decision: 'pending_review',
+        decision_reason: `Routed to Approver (Suggestion: ${liveDecision.decisionLabel})`,
+        role,
+        timestamp: now,
+      },
+    ];
 
-    setSubmittedApp(app);
-    setGeneratedNotifications(allNotifs);
-    onSubmitApplication(app, allNotifs);
-    setStep(5);
+    localStorage.removeItem(DRAFT_STORAGE_KEY);
+    setSubmittedResult({ app, profile: liveProfile });
+    onSubmitApplication(app, liveProfile, auditEntries);
   };
 
-  const handleManualOverride = (outcome: DecisionOutcome) => {
-    if (!submittedApp) return;
-    const reason =
-      overrideReason.trim() || `Manual ${outcome.replace('_', ' ')} override by ${role.toUpperCase()}`;
-    onOverrideDecision(submittedApp.id, outcome, reason);
-    const updated: ApplicationRecord = {
-      ...submittedApp,
-      decision: outcome,
-      decision_reason: reason,
-      status: outcome === 'auto_approve' ? 'approved' : outcome === 'manual_review' ? 'pending_review' : 'declined',
-      overridden_by: role,
-    };
-    const notifs = buildNotificationDrafts(updated, outcome, config);
-    setSubmittedApp(updated);
-    setGeneratedNotifications((prev) => [...notifs, ...prev]);
+  const handleClearDraft = () => {
+    localStorage.removeItem(DRAFT_STORAGE_KEY);
+    setDraft(createEmptyDraft(catalog, emiPlans));
+    setLookupMessage('');
+    setStepErrors({});
+    setSubmittedResult(null);
+    onToast('Draft cleared.');
   };
 
-  const sourceCards = [
-    {
-      key: 'telecom',
-      title: '1. Telecom Behavior (Unitel)',
-      status: explanation.sourceStatuses.telecom,
-      summary: selectedProfile.telecom
-        ? `Top-up ${selectedProfile.telecom.topup_months_last_12}/12 mo • Avg ${formatAoa(selectedProfile.telecom.avg_monthly_topup_aoa)} • Unpaid loans: ${selectedProfile.telecom.airtime_loans_unpaid}`
-        : 'No telecom profile found',
-    },
-    {
-      key: 'identity',
-      title: '2. National Identity & KYC',
-      status: explanation.sourceStatuses.identity,
-      summary: selectedProfile.identity
-        ? `BI ${selectedProfile.identity.bi_number} • ${selectedProfile.identity.id_verified ? 'Verified' : 'Not verified'} • Address ${selectedProfile.identity.address_verified ? 'verified' : 'unverified'}`
-        : 'No identity record found',
-    },
-    {
-      key: 'mobileMoney',
-      title: '3. Unitel Money Wallet',
-      status: explanation.sourceStatuses.mobileMoney,
-      summary: selectedProfile.mobileMoney?.wallet_exists
-        ? `${UNITEL_MONEY_TIERS[selectedProfile.mobileMoney.registration_level].label} • ${selectedProfile.mobileMoney.txn_count_90d} txns/90d • Bal ${formatAoa(selectedProfile.mobileMoney.avg_balance_aoa)}`
-        : 'No Unitel Money wallet registered (thin-file safe)',
-    },
-    {
-      key: 'tax',
-      title: '4. Tax Standing (AGT / NIF)',
-      status: explanation.sourceStatuses.tax,
-      summary: selectedProfile.tax
-        ? `NIF status: ${selectedProfile.tax.nif_status.toUpperCase()} • Filing: ${selectedProfile.tax.tax_filing_status.toUpperCase()}`
-        : 'No tax record (neutral)',
-    },
-  ];
+  // Result Page after Submit
+  if (submittedResult) {
+    const { app, profile } = submittedResult;
+    const exp = evaluateCreditScore(profile, config);
+    const dec = evaluateLimitAndDecision(exp, app.product_price_aoa, config, app.monthly_emi_aoa);
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div className="page-header">
+          <div>
+            <h2 className="page-title">Application Submitted — {app.id}</h2>
+            <p className="page-subtitle">
+              Saved and routed to the Approver queue. Policy suggestion:{' '}
+              <strong>{dec.decisionLabel}</strong>.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <StatusBadge status={app.status} />
+            <button type="button" className="btn btn-primary" onClick={handleClearDraft}>
+              + Start Another Application
+            </button>
+          </div>
+        </div>
+
+        {exp.thinFileNotice && (
+          <div className="alert-box">
+            <strong>Thin-File Explanation:</strong> {exp.thinFileNotice}
+          </div>
+        )}
+
+        <div className="grid-4">
+          <div className="card">
+            <div className="kpi-label">Proxy Credit Score (Demo)</div>
+            <div className="kpi-value">{exp.score}</div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+              <BandBadge band={exp.band} />
+              <ConfidenceBadge confidence={exp.confidence} />
+            </div>
+          </div>
+          <div className="card">
+            <div className="kpi-label">Credit Limit vs Price</div>
+            <div className="kpi-value" style={{ fontSize: 22 }}>{formatAoa(dec.creditLimitAoa)}</div>
+            <div className="kpi-meta">
+              Equipment: {formatAoa(app.product_price_aoa)} ({dec.headroomAoa >= 0 ? 'Within limit' : 'Above limit'})
+            </div>
+          </div>
+          <div className="card">
+            <div className="kpi-label">EMI Affordability</div>
+            <div className="kpi-value" style={{ fontSize: 22 }}>{formatAoa(app.monthly_emi_aoa)}/mo</div>
+            <div className="kpi-meta">
+              Cap: {formatAoa(dec.maxMonthlyEmiAoa)}/mo •{' '}
+              <strong>{dec.emiAffordable ? '✓ Affordable' : '✕ Over monthly cap'}</strong>
+            </div>
+          </div>
+          <div className="card">
+            <div className="kpi-label">Policy Suggestion</div>
+            <div style={{ marginTop: 10 }}>
+              <SuggestedDecisionBadge decision={dec.decision} />
+            </div>
+            <div className="kpi-meta" style={{ marginTop: 8 }}>{dec.decisionReason}</div>
+          </div>
+        </div>
+
+        <ScoreExplanationView profile={profile} explanation={exp} />
+
+        <WhatIfPanel
+          profile={profile}
+          config={config}
+          productName={app.product}
+          productPriceAoa={app.product_price_aoa}
+          monthlyEmiAoa={app.monthly_emi_aoa}
+          onProfileDraftChange={(nextP) => {
+            setSubmittedResult({ app, profile: nextP });
+          }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => onSaveWhatIfVersion(app, submittedResult.profile)}
+          >
+            Save What-If State as New Application Version
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div className="page-header">
         <div>
-          <h2 className="page-title">New Equipment Credit Application</h2>
+          <h2 className="page-title">New Equipment EMI Application</h2>
           <p className="page-subtitle">
-            6-stage Credit Workflow: Application → Data Collection → Proxy Rating → Credit Limit →
-            Decision → Notification Engine
+            Draft auto-saved locally • Complete all 6 steps to score and submit to the Approver.
           </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span className="badge band-fair">✓ Draft Auto-Saved</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={handleClearDraft}>
+            Reset / New Blank Form
+          </button>
         </div>
       </div>
 
-      {/* Stepper Header */}
+      {/* Progress Tracker */}
       <div className="stepper">
-        {STEPS.map((label, idx) => (
+        {STEP_LABELS.map((label, idx) => (
           <button
             key={label}
             type="button"
-            className={`step-pill ${step === idx ? 'active' : idx < step ? 'done' : ''}`}
+            className={`step-pill ${draft.step === idx ? 'active' : idx < draft.step ? 'done' : ''}`}
             onClick={() => {
-              if (idx === 1 && step !== 1) setFetchDone(false);
-              setStep(idx);
+              if (idx <= draft.step) goToStep(idx);
             }}
           >
-            <span className="step-num">{idx + 1}</span>
+            <span className="step-num">{idx < draft.step ? '✓' : idx + 1}</span>
             <span>{label.replace(/^\d+\.\s*/, '')}</span>
           </button>
         ))}
       </div>
 
-      {/* Step 1: Application Setup */}
-      {step === 0 && (
-        <div className="grid-2">
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Step 1A: Select Subscriber</h3>
-            </div>
-            <label className="field-label">Search by Name, Mobile (+244), or BI Number</label>
-            <input
-              type="text"
-              className="input"
-              placeholder="e.g. Thomas, Maria, +244 923 100 001..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ marginBottom: 10 }}
-            />
-
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-              {profiles.slice(0, 5).map((p) => (
-                <button
-                  key={p.customer.id}
-                  type="button"
-                  className={`btn btn-sm ${
-                    selectedCustomerId === p.customer.id ? 'btn-primary' : 'btn-secondary'
-                  }`}
-                  onClick={() => {
-                    setSelectedCustomerId(p.customer.id);
-                    setSubmittedApp(null);
-                  }}
-                >
-                  {p.customer.full_name}
-                </button>
-              ))}
-            </div>
-
-            <label className="field-label">Subscriber List ({filteredCustomers.length} shown)</label>
-            <select
-              className="select"
-              value={selectedCustomerId}
-              onChange={(e) => {
-                setSelectedCustomerId(e.target.value);
-                setSubmittedApp(null);
-              }}
-            >
-              {filteredCustomers.map((p) => (
-                <option key={p.customer.id} value={p.customer.id}>
-                  {p.customer.full_name} — {p.customer.mobile_no} ({p.customer.city})
-                </option>
-              ))}
-            </select>
+      {/* STEP 1: Customer Details */}
+      {draft.step === 0 && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">Step 1: Customer Details Collection</h3>
           </div>
 
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Step 1B: Choose Equipment &amp; Price</h3>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-              {PRODUCT_CATALOG.map((prod) => (
-                <button
-                  key={prod.id}
-                  type="button"
-                  className={`card ${selectedProductId === prod.id ? 'card-tinted' : ''}`}
-                  style={{
-                    padding: 12,
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    borderColor:
-                      selectedProductId === prod.id ? 'var(--orange-600)' : 'var(--orange-200)',
-                  }}
-                  onClick={() => handleProductChange(prod.id)}
-                >
-                  <div style={{ fontWeight: 700, color: 'var(--orange-700)' }}>{prod.category}</div>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{prod.name}</div>
-                  <div style={{ fontSize: 12.5, marginTop: 4 }}>{formatAoa(prod.defaultPriceAoa)}</div>
-                </button>
-              ))}
-            </div>
-
-            <label className="field-label">Equipment Price (AOA)</label>
-            <input
-              type="number"
-              className="input"
-              value={customPriceAoa}
-              min={10_000}
-              step={10_000}
-              onChange={(e) => setCustomPriceAoa(Number(e.target.value) || 0)}
-            />
-
-            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => {
-                  setFetchDone(false);
-                  setStep(1);
-                }}
-              >
-                Collect 4 Data Sources →
+          <div className="card-tinted" style={{ marginBottom: 16 }}>
+            <label className="field-label">Find Existing Customer by Mobile Number (Optional)</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                className="input"
+                style={{ maxWidth: 280 }}
+                placeholder="e.g. +244 923 100 001"
+                value={lookupMobile}
+                onChange={(e) => setLookupMobile(e.target.value)}
+              />
+              <button type="button" className="btn btn-secondary" onClick={handleFindByMobile}>
+                Find Existing Customer
               </button>
             </div>
+            {lookupMessage && <div className="field-helper">{lookupMessage}</div>}
+          </div>
+
+          <div className="grid-2">
+            <div>
+              <label className="field-label">Full Name *</label>
+              <input
+                type="text"
+                className={`input ${stepErrors.fullName ? 'input-error' : ''}`}
+                placeholder="e.g. Ana Paula Mendes"
+                value={draft.fullName}
+                onChange={(e) => setDraft((p) => ({ ...p, fullName: e.target.value }))}
+              />
+              {stepErrors.fullName && <div className="field-error">{stepErrors.fullName}</div>}
+            </div>
+
+            <div>
+              <label className="field-label">Unitel Mobile Number * (+244 9XX XXX XXX)</label>
+              <input
+                type="text"
+                className={`input ${stepErrors.mobileNo ? 'input-error' : ''}`}
+                placeholder="+244 923 456 789"
+                value={draft.mobileNo}
+                onChange={(e) => setDraft((p) => ({ ...p, mobileNo: e.target.value }))}
+              />
+              {stepErrors.mobileNo && <div className="field-error">{stepErrors.mobileNo}</div>}
+            </div>
+
+            <div>
+              <label className="field-label">BI Number * (14 characters)</label>
+              <input
+                type="text"
+                maxLength={14}
+                className={`input ${stepErrors.biNumber ? 'input-error' : ''}`}
+                placeholder="004198201LA041"
+                value={draft.biNumber}
+                onChange={(e) =>
+                  setDraft((p) => ({ ...p, biNumber: e.target.value.toUpperCase() }))
+                }
+              />
+              <div className="field-helper">{draft.biNumber.trim().length}/14 characters</div>
+              {stepErrors.biNumber && <div className="field-error">{stepErrors.biNumber}</div>}
+            </div>
+
+            <div>
+              <label className="field-label">Date of Birth *</label>
+              <input
+                type="date"
+                className={`input ${stepErrors.dateOfBirth ? 'input-error' : ''}`}
+                value={draft.dateOfBirth}
+                onChange={(e) => setDraft((p) => ({ ...p, dateOfBirth: e.target.value }))}
+              />
+              {stepErrors.dateOfBirth && <div className="field-error">{stepErrors.dateOfBirth}</div>}
+            </div>
+
+            <div>
+              <label className="field-label">Gender *</label>
+              <select
+                className="select"
+                value={draft.gender}
+                onChange={(e) => setDraft((p) => ({ ...p, gender: e.target.value as 'M' | 'F' }))}
+              >
+                <option value="M">Male (M)</option>
+                <option value="F">Female (F)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="field-label">City / Province *</label>
+              <select
+                className="select"
+                value={draft.city}
+                onChange={(e) => setDraft((p) => ({ ...p, city: e.target.value }))}
+              >
+                <option value="Luanda">Luanda</option>
+                <option value="Benguela">Benguela</option>
+                <option value="Huambo">Huambo</option>
+                <option value="Lubango">Lubango</option>
+                <option value="Cabinda">Cabinda</option>
+                <option value="Malanje">Malanje</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <label className="field-label">Residential Address *</label>
+            <input
+              type="text"
+              className={`input ${stepErrors.address ? 'input-error' : ''}`}
+              placeholder="Rua Comandante Gika, 42, Luanda"
+              value={draft.address}
+              onChange={(e) => setDraft((p) => ({ ...p, address: e.target.value }))}
+            />
+            {stepErrors.address && <div className="field-error">{stepErrors.address}</div>}
           </div>
         </div>
       )}
 
-      {/* Step 2: Data Collection */}
-      {step === 1 && (
+      {/* STEP 2: Transaction Volume */}
+      {draft.step === 1 && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">Step 2: Transaction Volume &amp; Unitel Money Verification</h3>
+          </div>
+
+          <div className="alert-box" style={{ marginBottom: 14 }}>
+            <strong>Unitel Money Onboarding Rule:</strong> {UNITEL_MONEY_UNBANKED_HELPER}
+          </div>
+
+          <div className="grid-2" style={{ marginBottom: 16 }}>
+            <button
+              type="button"
+              className={`card-selectable ${draft.volumeTier === 'low' ? 'selected' : ''}`}
+              onClick={() => handleVolumeTierChange('low')}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <strong style={{ fontSize: 16, color: 'var(--orange-700)' }}>Low Volume</strong>
+                <span className="badge band-fair">Basic Verification</span>
+              </div>
+              <div style={{ fontSize: 13 }}>
+                Low-level digital transactions. Requires <strong>Basic Registration</strong> only.
+              </div>
+              <div style={{ fontSize: 12, marginTop: 8, fontWeight: 700 }}>
+                Limits: up to 25,000 AOA daily • up to 70,000 AOA wallet balance
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className={`card-selectable ${draft.volumeTier === 'high' ? 'selected' : ''}`}
+              onClick={() => handleVolumeTierChange('high')}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <strong style={{ fontSize: 16, color: 'var(--orange-700)' }}>High Volume</strong>
+                <span className="badge band-excellent">Basic + Enhanced KYC</span>
+              </div>
+              <div style={{ fontSize: 13 }}>
+                Higher-value equipment &amp; digital flows. Requires <strong>Enhanced KYC</strong>{' '}
+                (Government ID + address + BNA check).
+              </div>
+              <div style={{ fontSize: 12, marginTop: 8, fontWeight: 700 }}>
+                Limits: up to 300,000 AOA daily • up to 18,000,000 AOA wallet balance
+              </div>
+            </button>
+          </div>
+
+          {/* Basic Fields (always shown) */}
+          <div className="card-tinted" style={{ marginBottom: 14 }}>
+            <div style={{ fontWeight: 800, color: 'var(--orange-700)', marginBottom: 10 }}>
+              Basic Registration Verification
+            </div>
+            <div className="grid-3">
+              <div>
+                <label className="field-label">Subscriber Name / DOB / Gender</label>
+                <div style={{ fontSize: 13, paddingTop: 6 }}>
+                  <strong>{draft.fullName || 'New Subscriber'}</strong> • {draft.dateOfBirth} •{' '}
+                  {draft.gender}
+                </div>
+              </div>
+
+              <div>
+                <label className="field-label">Registration Channel</label>
+                <select
+                  className="select"
+                  value={draft.registrationChannel}
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      registrationChannel: e.target.value as RegistrationChannel,
+                    }))
+                  }
+                >
+                  <option value="app">Unitel Money Mobile App</option>
+                  <option value="ussd">USSD *449#</option>
+                  <option value="agent">Authorized Agent or Store</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'center' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <input
+                    type="checkbox"
+                    checked={draft.pinCreated}
+                    onChange={(e) => setDraft((p) => ({ ...p, pinCreated: e.target.checked }))}
+                  />
+                  Mobile PIN created &amp; confirmed
+                </label>
+                {stepErrors.pinCreated && <div className="field-error">{stepErrors.pinCreated}</div>}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <input
+                    type="checkbox"
+                    checked={draft.termsAccepted}
+                    onChange={(e) => setDraft((p) => ({ ...p, termsAccepted: e.target.checked }))}
+                  />
+                  Terms &amp; Conditions accepted
+                </label>
+                {stepErrors.termsAccepted && (
+                  <div className="field-error">{stepErrors.termsAccepted}</div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid-2" style={{ marginTop: 12 }}>
+              <div>
+                <label className="field-label">
+                  Wallet Balance (AOA) — Max{' '}
+                  {formatAoa(
+                    draft.volumeTier === 'low'
+                      ? UNITEL_MONEY_TIERS.basic.maxBalanceAoa
+                      : UNITEL_MONEY_TIERS.kyc.maxBalanceAoa
+                  )}
+                </label>
+                <input
+                  type="number"
+                  className={`input ${stepErrors.walletBalanceAoa ? 'input-error' : ''}`}
+                  value={draft.walletBalanceAoa}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, walletBalanceAoa: Number(e.target.value) || 0 }))
+                  }
+                />
+                {stepErrors.walletBalanceAoa && (
+                  <div className="field-error">{stepErrors.walletBalanceAoa}</div>
+                )}
+              </div>
+
+              <div>
+                <label className="field-label">
+                  Daily Transaction Amount (AOA) — Max{' '}
+                  {formatAoa(
+                    draft.volumeTier === 'low'
+                      ? UNITEL_MONEY_TIERS.basic.dailyLimitAoa
+                      : UNITEL_MONEY_TIERS.kyc.dailyLimitAoa
+                  )}
+                </label>
+                <input
+                  type="number"
+                  className={`input ${stepErrors.dailyTxnAoa ? 'input-error' : ''}`}
+                  value={draft.dailyTxnAoa}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, dailyTxnAoa: Number(e.target.value) || 0 }))
+                  }
+                />
+                {stepErrors.dailyTxnAoa && (
+                  <div className="field-error">{stepErrors.dailyTxnAoa}</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Enhanced KYC Fields (ONLY shown for High Volume) */}
+          {draft.volumeTier === 'high' && (
+            <div className="card-tinted">
+              <div style={{ fontWeight: 800, color: 'var(--orange-700)', marginBottom: 10 }}>
+                Enhanced KYC Verification (Required for High Volume)
+              </div>
+              <div className="grid-3">
+                <div>
+                  <label className="field-label">ID Document Type *</label>
+                  <select
+                    className="select"
+                    value={draft.idDocType}
+                    onChange={(e) =>
+                      setDraft((p) => ({ ...p, idDocType: e.target.value as IdDocumentType }))
+                    }
+                  >
+                    <option value="BI">National ID (BI)</option>
+                    <option value="Passport">Passport</option>
+                    <option value="Other">Other Government ID</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="field-label">Identification Number *</label>
+                  <input
+                    type="text"
+                    className={`input ${stepErrors.idNumber ? 'input-error' : ''}`}
+                    value={draft.idNumber}
+                    onChange={(e) =>
+                      setDraft((p) => ({ ...p, idNumber: e.target.value.toUpperCase() }))
+                    }
+                  />
+                  {stepErrors.idNumber && <div className="field-error">{stepErrors.idNumber}</div>}
+                </div>
+
+                <div>
+                  <label className="field-label">Date of Issue *</label>
+                  <input
+                    type="date"
+                    className={`input ${stepErrors.idIssueDate ? 'input-error' : ''}`}
+                    value={draft.idIssueDate}
+                    onChange={(e) => setDraft((p) => ({ ...p, idIssueDate: e.target.value }))}
+                  />
+                  {stepErrors.idIssueDate && (
+                    <div className="field-error">{stepErrors.idIssueDate}</div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="field-label">Place of Issue *</label>
+                  <input
+                    type="text"
+                    className={`input ${stepErrors.idIssuePlace ? 'input-error' : ''}`}
+                    value={draft.idIssuePlace}
+                    onChange={(e) => setDraft((p) => ({ ...p, idIssuePlace: e.target.value }))}
+                  />
+                  {stepErrors.idIssuePlace && (
+                    <div className="field-error">{stepErrors.idIssuePlace}</div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="field-label">Residential Address *</label>
+                  <input
+                    type="text"
+                    className={`input ${stepErrors.residentialAddress ? 'input-error' : ''}`}
+                    value={draft.residentialAddress}
+                    onChange={(e) =>
+                      setDraft((p) => ({ ...p, residentialAddress: e.target.value }))
+                    }
+                  />
+                  {stepErrors.residentialAddress && (
+                    <div className="field-error">{stepErrors.residentialAddress}</div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', paddingTop: 18 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={draft.additionalKycVerified}
+                      onChange={(e) =>
+                        setDraft((p) => ({ ...p, additionalKycVerified: e.target.checked }))
+                      }
+                    />
+                    Additional BNA KYC verification completed
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* STEP 3: Equipment & Price */}
+      {draft.step === 2 && (
         <div className="card">
           <div className="card-header">
             <div>
               <h3 className="card-title">
-                Step 2: Pulling Proxy Data Sources for {selectedProfile.customer.full_name}
+                Step 3: Equipment Selection (Demo Prices)
               </h3>
-              <div style={{ fontSize: 12.5, opacity: 0.85 }}>
-                Shared key: <strong>{selectedProfile.customer.mobile_no}</strong> | BI / NIF:{' '}
-                <strong>{selectedProfile.customer.bi_number}</strong>
+              <div style={{ fontSize: 12.5 }}>
+                Filtered for <VolumeTierBadge tier={draft.volumeTier} /> • Admin price ceiling:{' '}
+                <strong>{formatAoa(priceCeiling)}</strong>
               </div>
-            </div>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => setFetchDone(false)}
-            >
-              Replay Fetch Animation
-            </button>
-          </div>
-
-          <div className="grid-2">
-            {sourceCards.map((sc, idx) => {
-              const loaded = fetchDone || fetchedCount > idx;
-              return (
-                <div
-                  key={sc.key}
-                  className={`card ${!loaded ? 'source-loading' : ''}`}
-                  style={{ padding: 14 }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <strong>{sc.title}</strong>
-                    {loaded ? (
-                      <SourceStatusBadge status={sc.status} />
-                    ) : (
-                      <span className="badge band-poor">Querying...</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 13 }}>
-                    {loaded ? sc.summary : 'Connecting to simulated source endpoint...'}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div
-            style={{
-              marginTop: 16,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 10,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>Detected Data Confidence:</span>
-              <ConfidenceBadge confidence={explanation.confidence} />
-              <span style={{ fontSize: 12.5 }}>
-                ({explanation.meaningfulSourceCount} of 4 meaningful sources)
-              </span>
-            </div>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={!fetchDone}
-              onClick={() => setStep(2)}
-            >
-              Compute Proxy Credit Score →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 3: Rating */}
-      {step === 2 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <ScoreExplanationView profile={selectedProfile} explanation={explanation} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-primary" onClick={() => setStep(3)}>
-              Assign Credit Limit →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 4: Credit Limit */}
-      {step === 3 && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">Step 4: Credit Limit Assignment vs. Equipment Price</h3>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <BandBadge band={explanation.band} />
-              <ConfidenceBadge confidence={explanation.confidence} />
             </div>
           </div>
 
           <div className="grid-3" style={{ marginBottom: 16 }}>
-            <div className="card-tinted">
-              <div className="kpi-label">Eligible Credit Limit</div>
-              <div className="kpi-value" style={{ fontSize: 24 }}>
-                {formatAoa(limitDecision.creditLimitAoa)}
-              </div>
-              <div className="kpi-meta">
-                From {explanation.band} × {explanation.confidence} confidence table
-              </div>
-            </div>
-
-            <div className="card-tinted">
-              <div className="kpi-label">Requested Equipment Price</div>
-              <div className="kpi-value" style={{ fontSize: 24 }}>
-                {formatAoa(limitDecision.productPriceAoa)}
-              </div>
-              <div className="kpi-meta">{selectedProduct.name}</div>
-            </div>
-
-            <div className="card-tinted">
-              <div className="kpi-label">
-                {limitDecision.headroomAoa >= 0 ? 'Remaining Headroom' : 'Affordability Gap'}
-              </div>
-              <div className="kpi-value" style={{ fontSize: 24 }}>
-                {limitDecision.headroomAoa >= 0 ? '+' : '-'}
-                {formatAoa(Math.abs(limitDecision.headroomAoa))}
-              </div>
-              <div className="kpi-meta">
-                {limitDecision.startSmallApplied
-                  ? '"Start small" cap applied due to Low confidence'
-                  : limitDecision.headroomAoa >= 0
-                    ? 'Price fits cleanly within assigned limit'
-                    : 'Customer down-payment or manual review needed'}
-              </div>
-            </div>
+            {filteredCatalog.map((item) => {
+              const selected = !draft.useCustomEquipment && draft.selectedEquipmentId === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`card-selectable ${selected ? 'selected' : ''}`}
+                  onClick={() =>
+                    setDraft((p) => ({
+                      ...p,
+                      useCustomEquipment: false,
+                      selectedEquipmentId: item.id,
+                      equipmentPriceAoa: item.price_aoa,
+                    }))
+                  }
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span className="badge band-fair">{item.category}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700 }}>Demo Price</span>
+                  </div>
+                  <div style={{ fontWeight: 800, fontSize: 14.5 }}>{item.item_name}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--orange-700)', marginTop: 6 }}>
+                    {formatAoa(item.price_aoa)}
+                  </div>
+                  {item.description && (
+                    <div style={{ fontSize: 12, marginTop: 4 }}>{item.description}</div>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-primary" onClick={() => setStep(4)}>
-              Evaluate Decision →
-            </button>
+          <div className="card-tinted">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 10 }}>
+              <input
+                type="checkbox"
+                checked={draft.useCustomEquipment}
+                onChange={(e) => setDraft((p) => ({ ...p, useCustomEquipment: e.target.checked }))}
+              />
+              Enter Custom Equipment Item &amp; Price (within {formatAoa(priceCeiling)} ceiling)
+            </label>
+
+            <div className="grid-2">
+              <div>
+                <label className="field-label">Custom Equipment Name</label>
+                <input
+                  type="text"
+                  className={`input ${stepErrors.customItemName ? 'input-error' : ''}`}
+                  disabled={!draft.useCustomEquipment}
+                  placeholder="e.g. Solar Inverter Kit"
+                  value={draft.customItemName}
+                  onChange={(e) => setDraft((p) => ({ ...p, customItemName: e.target.value }))}
+                />
+                {stepErrors.customItemName && (
+                  <div className="field-error">{stepErrors.customItemName}</div>
+                )}
+              </div>
+
+              <div>
+                <label className="field-label">Equipment Price (AOA)</label>
+                <input
+                  type="number"
+                  className={`input ${stepErrors.equipmentPriceAoa ? 'input-error' : ''}`}
+                  value={draft.equipmentPriceAoa}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, equipmentPriceAoa: Number(e.target.value) || 0 }))
+                  }
+                />
+                {stepErrors.equipmentPriceAoa && (
+                  <div className="field-error">{stepErrors.equipmentPriceAoa}</div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Step 5: Decision */}
-      {step === 4 && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">Step 5: Automated Decision Routing</h3>
-            <DecisionBadge decision={submittedApp?.decision ?? limitDecision.decision} />
-          </div>
-
-          <div className="alert-box" style={{ marginBottom: 14 }}>
-            <strong>Decision Rationale:</strong>{' '}
-            {submittedApp?.decision_reason ?? limitDecision.decisionReason}
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-            <div style={{ fontSize: 13 }}>
-              Score: <strong>{explanation.score}</strong> (<BandBadge band={explanation.band} />) •{' '}
-              <ConfidenceBadge confidence={explanation.confidence} /> • Limit:{' '}
-              <strong>{formatAoa(limitDecision.creditLimitAoa)}</strong>
-            </div>
-            <button type="button" className="btn btn-primary" onClick={handleCommitDecisionAndNotify}>
-              Confirm Decision &amp; Generate Notifications →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 6: Notification Engine & Approver Override */}
-      {step === 5 && (
+      {/* STEP 4: EMI Plan */}
+      {draft.step === 3 && (
         <div className="card">
           <div className="card-header">
             <div>
-              <h3 className="card-title">
-                Step 6: Notifications Dispatched (Simulated) —{' '}
-                {submittedApp?.id ?? 'Draft'}
-              </h3>
-              <div style={{ fontSize: 12.5, opacity: 0.85 }}>
-                Mock SMS &amp; Email generated from editable Admin templates and logged.
+              <h3 className="card-title">Step 4: Select EMI Plan</h3>
+              <div style={{ fontSize: 12.5 }}>
+                Plans tailored for <VolumeTierBadge tier={draft.volumeTier} /> •{' '}
+                {activeEquipmentName} ({formatAoa(draft.equipmentPriceAoa)})
               </div>
             </div>
-            <DecisionBadge decision={submittedApp?.decision ?? limitDecision.decision} />
           </div>
 
-          {generatedNotifications.length === 0 ? (
-            <div className="alert-box">
-              Click "Confirm Decision &amp; Generate Notifications" in Step 5 to record this application.
-            </div>
-          ) : (
-            <div className="grid-2" style={{ marginBottom: 16 }}>
-              {generatedNotifications.slice(0, 2).map((n) => (
-                <div key={n.id} className="card-tinted">
+          <div className="grid-2">
+            {filteredEmiPlans.map((plan) => {
+              const calc = calculateEmiPlan(draft.equipmentPriceAoa, plan);
+              const selected = selectedPlan?.id === plan.id;
+              return (
+                <button
+                  key={plan.id}
+                  type="button"
+                  className={`card-selectable ${selected ? 'selected' : ''}`}
+                  onClick={() => setDraft((p) => ({ ...p, selectedEmiPlanId: plan.id }))}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <strong>{n.channel.toUpperCase()} ({n.template})</strong>
-                    <span className="badge band-good">Simulated Sent</span>
+                    <strong style={{ fontSize: 17, color: 'var(--orange-700)' }}>
+                      {plan.term_months} Months EMI
+                    </strong>
+                    <span className="badge band-good">{plan.interest_rate_pct}% APR (Demo)</span>
                   </div>
-                  {n.subject && (
-                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>
-                      Subject: {n.subject}
-                    </div>
-                  )}
-                  <pre
-                    style={{
-                      margin: 0,
-                      whiteSpace: 'pre-wrap',
-                      fontFamily: 'inherit',
-                      fontSize: 12.5,
-                    }}
-                  >
-                    {n.body}
-                  </pre>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {submittedApp && (role === 'approver' || role === 'admin') && (
-            <div
-              style={{
-                borderTop: '1px solid var(--orange-200)',
-                paddingTop: 14,
-                display: 'flex',
-                gap: 10,
-                alignItems: 'center',
-                flexWrap: 'wrap',
-              }}
-            >
-              <strong style={{ fontSize: 13 }}>Approver Override:</strong>
-              <input
-                type="text"
-                className="input"
-                style={{ maxWidth: 340 }}
-                placeholder="Override reason (e.g. verified salary slip)"
-                value={overrideReason}
-                onChange={(e) => setOverrideReason(e.target.value)}
-              />
-              <button
-                type="button"
-                className="btn btn-approve btn-sm"
-                onClick={() => handleManualOverride('auto_approve')}
-              >
-                Override Approve
-              </button>
-              <button
-                type="button"
-                className="btn btn-decline btn-sm"
-                onClick={() => handleManualOverride('decline')}
-              >
-                Override Decline
-              </button>
-            </div>
-          )}
+                  <div style={{ fontSize: 22, fontWeight: 800 }}>
+                    {formatAoa(calc.monthly_emi_aoa)} <span style={{ fontSize: 13 }}>/ month</span>
+                  </div>
+                  <div style={{ fontSize: 12.5, marginTop: 8 }}>
+                    Down payment ({plan.min_down_payment_pct}%):{' '}
+                    <strong>{formatAoa(calc.down_payment_aoa)}</strong> • Total payable:{' '}
+                    <strong>{formatAoa(calc.total_payable_aoa)}</strong>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* Always-visible Live What-If Panel below the stepper */}
-      <WhatIfPanel
-        profile={selectedProfile}
-        config={config}
-        productName={selectedProduct.name}
-        productPriceAoa={customPriceAoa}
-        activeApplication={submittedApp}
-        onSyncApplicationAndNotifications={(updatedProfile, updatedApp, newNotifs) => {
-          setSubmittedApp(updatedApp);
-          setGeneratedNotifications((prev) => [...newNotifs, ...prev]);
-          onUpdateApplicationAndNotifications(updatedProfile, updatedApp, newNotifs);
-        }}
-      />
+      {/* STEP 5: Database & Sources */}
+      {draft.step === 4 && (
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h3 className="card-title">Step 5: Subscriber Data Sources &amp; Banking Check</h3>
+              <div style={{ fontSize: 12.5 }}>
+                Lookup key: <strong>{draft.mobileNo}</strong> —{' '}
+                {dbMatch ? (
+                  <span className="badge band-good">
+                    Found in database ({dbMatch.customer.full_name})
+                  </span>
+                ) : (
+                  <span className="badge band-fair">
+                    New customer (not in database) — enter source fields manually below
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div style={{ minWidth: 250 }}>
+              <label className="field-label">Fill Sample Data (Quick Demo)</label>
+              <select
+                className="select"
+                value={draft.matchedCustomerId ?? ''}
+                onChange={(e) => {
+                  const found = profiles.find((p) => p.customer.id === e.target.value);
+                  if (found) {
+                    applyProfileToDraft(found, true);
+                    onToast(`Loaded sample customer: ${found.customer.full_name}`);
+                  }
+                }}
+              >
+                <option value="">-- Choose example persona --</option>
+                {profiles.slice(0, 5).map((p) => (
+                  <option key={p.customer.id} value={p.customer.id}>
+                    {p.customer.full_name} ({p.customer.mobile_no})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid-4" style={{ marginBottom: 16 }}>
+            <div className="card-tinted" style={{ padding: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <strong>Telecom</strong>
+                <SourceStatusBadge status={liveExplanation.sourceStatuses.telecom} />
+              </div>
+            </div>
+            <div className="card-tinted" style={{ padding: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <strong>Mobile Money</strong>
+                <SourceStatusBadge status={liveExplanation.sourceStatuses.mobileMoney} />
+              </div>
+            </div>
+            <div className="card-tinted" style={{ padding: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <strong>Identity</strong>
+                <SourceStatusBadge status={liveExplanation.sourceStatuses.identity} />
+              </div>
+            </div>
+            <div className="card-tinted" style={{ padding: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <strong>Tax (AGT)</strong>
+                <SourceStatusBadge status={liveExplanation.sourceStatuses.tax} />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid-2">
+            {/* Telecom Source Form */}
+            <div className="card" style={{ padding: 14 }}>
+              <strong style={{ color: 'var(--orange-700)', display: 'block', marginBottom: 10 }}>
+                1. Telecom Behavior
+              </strong>
+              <div className="grid-2">
+                <div>
+                  <label className="field-label">SIM Activation Date</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={draft.simActivationDate}
+                    onChange={(e) => setDraft((p) => ({ ...p, simActivationDate: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Avg Monthly Top-up (AOA)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={draft.avgMonthlyTopupAoa}
+                    onChange={(e) =>
+                      setDraft((p) => ({ ...p, avgMonthlyTopupAoa: Number(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Top-up Months (Last 12m)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={12}
+                    className="input"
+                    value={draft.topupMonthsLast12}
+                    onChange={(e) =>
+                      setDraft((p) => ({ ...p, topupMonthsLast12: Number(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Airtime Loans Taken</label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="input"
+                    value={draft.airtimeLoansTaken}
+                    onChange={(e) =>
+                      setDraft((p) => ({ ...p, airtimeLoansTaken: Number(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Loans Repaid On Time</label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="input"
+                    value={draft.airtimeLoansRepaidOnTime}
+                    onChange={(e) =>
+                      setDraft((p) => ({
+                        ...p,
+                        airtimeLoansRepaidOnTime: Number(e.target.value) || 0,
+                      }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Unpaid Airtime Loans</label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="input"
+                    value={draft.airtimeLoansUnpaid}
+                    onChange={(e) =>
+                      setDraft((p) => ({ ...p, airtimeLoansUnpaid: Number(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={draft.simRegisteredWithBi}
+                  onChange={(e) =>
+                    setDraft((p) => ({ ...p, simRegisteredWithBi: e.target.checked }))
+                  }
+                />
+                SIM registered with matching BI
+              </label>
+            </div>
+
+            {/* Mobile Money, Banking, Identity, Tax */}
+            <div className="card" style={{ padding: 14 }}>
+              <strong style={{ color: 'var(--orange-700)', display: 'block', marginBottom: 10 }}>
+                2. Unitel Money, Banking, Identity &amp; Tax
+              </strong>
+              <div className="grid-2">
+                <div>
+                  <label className="field-label">Avg Monthly Inflow (AOA)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    disabled={!draft.walletExists}
+                    value={draft.monthlyInflowAoa}
+                    onChange={(e) =>
+                      setDraft((p) => ({ ...p, monthlyInflowAoa: Number(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Transactions (Last 90d)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="input"
+                    disabled={!draft.walletExists}
+                    value={draft.txnCount90d}
+                    onChange={(e) =>
+                      setDraft((p) => ({ ...p, txnCount90d: Number(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Failed Transactions (90d)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="input"
+                    disabled={!draft.walletExists}
+                    value={draft.failedTxnCount90d}
+                    onChange={(e) =>
+                      setDraft((p) => ({ ...p, failedTxnCount90d: Number(e.target.value) || 0 }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="field-label">NIF Status</label>
+                  <select
+                    className="select"
+                    value={draft.nifStatus}
+                    onChange={(e) =>
+                      setDraft((p) => ({ ...p, nifStatus: e.target.value as NifStatus }))
+                    }
+                  >
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended (-5 pts)</option>
+                    <option value="none">None (neutral)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label">Tax Filing Status</label>
+                  <select
+                    className="select"
+                    value={draft.taxFilingStatus}
+                    onChange={(e) =>
+                      setDraft((p) => ({
+                        ...p,
+                        taxFilingStatus: e.target.value as TaxFilingStatus,
+                      }))
+                    }
+                  >
+                    <option value="regular">Regular</option>
+                    <option value="irregular">Irregular</option>
+                    <option value="none">None (neutral)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10, fontSize: 13 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={draft.walletExists}
+                    onChange={(e) => setDraft((p) => ({ ...p, walletExists: e.target.checked }))}
+                  />
+                  Has Unitel Money wallet ({draft.volumeTier === 'high' ? 'KYC' : 'Basic'})
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={draft.hasBankAccount}
+                    onChange={(e) => setDraft((p) => ({ ...p, hasBankAccount: e.target.checked }))}
+                  />
+                  Has traditional bank account (Neutral — unbanked is never penalized)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={draft.idVerified}
+                    onChange={(e) => setDraft((p) => ({ ...p, idVerified: e.target.checked }))}
+                  />
+                  BI Identity Verified
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={draft.addressVerified}
+                    onChange={(e) => setDraft((p) => ({ ...p, addressVerified: e.target.checked }))}
+                  />
+                  Residential Address Verified
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 6: Review & Submit */}
+      {draft.step === 5 && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">Step 6: Review &amp; Submit for Approval</h3>
+            <ConfidenceBadge confidence={liveExplanation.confidence} />
+          </div>
+
+          <div className="grid-2" style={{ marginBottom: 16 }}>
+            <div className="card-tinted">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <strong>Customer &amp; Volume Tier</strong>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDraft((p) => ({ ...p, step: 0 }))}>
+                  Edit
+                </button>
+              </div>
+              <div style={{ fontSize: 13 }}>
+                <div><strong>{draft.fullName}</strong> ({draft.mobileNo})</div>
+                <div>BI: {draft.biNumber} • {draft.city}</div>
+                <div style={{ marginTop: 4 }}><VolumeTierBadge tier={draft.volumeTier} /></div>
+              </div>
+            </div>
+
+            <div className="card-tinted">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <strong>Equipment &amp; EMI Plan</strong>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDraft((p) => ({ ...p, step: 2 }))}>
+                  Edit
+                </button>
+              </div>
+              <div style={{ fontSize: 13 }}>
+                <div><strong>{activeEquipmentName}</strong> — {formatAoa(draft.equipmentPriceAoa)}</div>
+                <div>
+                  {emiCalc.term_months} months @ {emiCalc.interest_rate_pct}% • Down:{' '}
+                  {formatAoa(emiCalc.down_payment_aoa)}
+                </div>
+                <div>
+                  Monthly EMI: <strong>{formatAoa(emiCalc.monthly_emi_aoa)}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card-tinted" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <strong>Data Completeness &amp; Pre-Submission Score Preview</strong>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDraft((p) => ({ ...p, step: 4 }))}>
+                Edit Sources
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span>Meaningful Sources: <strong>{liveExplanation.meaningfulSourceCount}/4</strong></span>
+              <span>Proxy Score (Demo): <strong>{liveExplanation.score}</strong></span>
+              <BandBadge band={liveExplanation.band} />
+              <ConfidenceBadge confidence={liveExplanation.confidence} />
+              <SuggestedDecisionBadge decision={liveDecision.decision} />
+            </div>
+            {liveExplanation.thinFileNotice && (
+              <div style={{ fontSize: 12.5, marginTop: 8 }}>{liveExplanation.thinFileNotice}</div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" className="btn btn-primary" onClick={handleFinalSubmit}>
+              Submit Application to Approver →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Back / Next Footer Controls */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={draft.step === 0}
+          onClick={() => goToStep(draft.step - 1)}
+        >
+          ← Back
+        </button>
+        {draft.step < STEP_LABELS.length - 1 && (
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => goToStep(draft.step + 1)}
+          >
+            Next: {STEP_LABELS[draft.step + 1].replace(/^\d+\.\s*/, '')} →
+          </button>
+        )}
+      </div>
     </div>
   );
 }
-

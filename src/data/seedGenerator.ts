@@ -1,23 +1,28 @@
 import {
+  DEFAULT_EMI_PLANS,
+  DEFAULT_EQUIPMENT_CATALOG,
   DEFAULT_SCORING_CONFIG,
-  PRODUCT_CATALOG,
   buildNotificationDrafts,
+  calculateEmiPlan,
   evaluateCreditScore,
   evaluateLimitAndDecision,
 } from '../scoring';
 import type {
   ApplicationRecord,
+  AuditLogEntry,
   Customer,
   CustomerProfile,
+  EmiPlanConfig,
+  EquipmentItem,
   IdentitySource,
   MobileMoneySource,
   NotificationRecord,
   ScoringConfig,
   TaxSource,
   TelecomSource,
+  VolumeTier,
 } from '../scoring';
 
-// Deterministic PRNG (Mulberry32) so all 300 customers are reproducible across browser and Supabase seed
 function createRng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -90,7 +95,7 @@ function isoDateMonthsAgo(monthsAgo: number, day: number): string {
 }
 
 export function buildPersonas(): CustomerProfile[] {
-  const personas: CustomerProfile[] = [
+  return [
     {
       customer: {
         id: 'cust-001',
@@ -100,7 +105,10 @@ export function buildPersonas(): CustomerProfile[] {
         date_of_birth: '1988-04-19',
         gender: 'M',
         city: 'Luanda',
+        address: 'Urbanização Nova Vida, Rua 14, Luanda',
+        volume_tier: 'high',
       },
+      has_bank_account: true,
       telecom: {
         mobile_no: '+244 923 100 001',
         sim_activation_date: '2022-10-15',
@@ -120,6 +128,7 @@ export function buildPersonas(): CustomerProfile[] {
         monthly_inflow_aoa: 420_000,
         monthly_outflow_aoa: 290_000,
         avg_balance_aoa: 850_000,
+        daily_txn_aoa: 65_000,
         txn_count_90d: 44,
         failed_txn_count_90d: 0,
       },
@@ -148,7 +157,10 @@ export function buildPersonas(): CustomerProfile[] {
         date_of_birth: '1991-08-11',
         gender: 'F',
         city: 'Benguela',
+        address: 'Bairro da Graça, Benguela',
+        volume_tier: 'low',
       },
+      has_bank_account: false,
       telecom: {
         mobile_no: '+244 923 100 002',
         sim_activation_date: '2023-10-10',
@@ -168,6 +180,7 @@ export function buildPersonas(): CustomerProfile[] {
         monthly_inflow_aoa: 4_500,
         monthly_outflow_aoa: 3_800,
         avg_balance_aoa: 5_200,
+        daily_txn_aoa: 2_500,
         txn_count_90d: 2,
         failed_txn_count_90d: 0,
       },
@@ -196,7 +209,10 @@ export function buildPersonas(): CustomerProfile[] {
         date_of_birth: '2001-01-27',
         gender: 'M',
         city: 'Huambo',
+        address: 'Zona Académica, Huambo',
+        volume_tier: 'low',
       },
+      has_bank_account: false,
       telecom: {
         mobile_no: '+244 923 100 003',
         sim_activation_date: '2026-09-05',
@@ -216,6 +232,7 @@ export function buildPersonas(): CustomerProfile[] {
         monthly_inflow_aoa: 0,
         monthly_outflow_aoa: 0,
         avg_balance_aoa: 0,
+        daily_txn_aoa: 0,
         txn_count_90d: 0,
         failed_txn_count_90d: 0,
       },
@@ -244,7 +261,10 @@ export function buildPersonas(): CustomerProfile[] {
         date_of_birth: '1986-11-03',
         gender: 'F',
         city: 'Luanda',
+        address: 'Maianga, Rua 7, Luanda',
+        volume_tier: 'high',
       },
+      has_bank_account: true,
       telecom: {
         mobile_no: '+244 923 100 004',
         sim_activation_date: '2025-04-01',
@@ -264,6 +284,7 @@ export function buildPersonas(): CustomerProfile[] {
         monthly_inflow_aoa: 260_000,
         monthly_outflow_aoa: 240_000,
         avg_balance_aoa: 62_000,
+        daily_txn_aoa: 22_000,
         txn_count_90d: 36,
         failed_txn_count_90d: 1,
       },
@@ -292,7 +313,10 @@ export function buildPersonas(): CustomerProfile[] {
         date_of_birth: '1984-06-22',
         gender: 'M',
         city: 'Lubango',
+        address: 'Bairro Comercial, Lubango',
+        volume_tier: 'low',
       },
+      has_bank_account: false,
       telecom: {
         mobile_no: '+244 923 100 005',
         sim_activation_date: '2021-08-15',
@@ -312,6 +336,7 @@ export function buildPersonas(): CustomerProfile[] {
         monthly_inflow_aoa: 48_000,
         monthly_outflow_aoa: 42_000,
         avg_balance_aoa: 19_000,
+        daily_txn_aoa: 10_000,
         txn_count_90d: 14,
         failed_txn_count_90d: 1,
       },
@@ -332,14 +357,17 @@ export function buildPersonas(): CustomerProfile[] {
       },
     },
   ];
-
-  return personas;
 }
 
-export function generateSeedDataset(config: ScoringConfig = DEFAULT_SCORING_CONFIG): {
+export function generateSeedDataset(
+  config: ScoringConfig = DEFAULT_SCORING_CONFIG,
+  catalog: EquipmentItem[] = DEFAULT_EQUIPMENT_CATALOG,
+  emiPlans: EmiPlanConfig[] = DEFAULT_EMI_PLANS
+): {
   profiles: CustomerProfile[];
   applications: ApplicationRecord[];
   notifications: NotificationRecord[];
+  auditLogs: AuditLogEntry[];
 } {
   const rng = createRng(20261112);
   const personas = buildPersonas();
@@ -363,7 +391,6 @@ export function generateSeedDataset(config: ScoringConfig = DEFAULT_SCORING_CONF
     const birthYear = 1972 + Math.floor(rng() * 32);
     const dob = `${birthYear}-${pad(1 + Math.floor(rng() * 12), 2)}-${pad(1 + Math.floor(rng() * 28), 2)}`;
 
-    // Cohort distribution: 55% thin/no-wallet, 30% mixed, 15% rich
     const cohortRoll = rng();
     const cohort: 'thin' | 'mixed' | 'rich' =
       cohortRoll < 0.55 ? 'thin' : cohortRoll < 0.85 ? 'mixed' : 'rich';
@@ -396,7 +423,6 @@ export function generateSeedDataset(config: ScoringConfig = DEFAULT_SCORING_CONF
           ? Number((0.18 + rng() * 0.35).toFixed(2))
           : Number((0.28 + rng() * 0.58).toFixed(2));
 
-    // Correlation: longer SIM + regular top-ups -> better airtime loan repayment, with noise
     const loansTaken = simMonths > 12 ? Math.floor(rng() * 5) : Math.floor(rng() * 2);
     const hasUnpaidNoise =
       cohort === 'thin' ? rng() < 0.16 : cohort === 'mixed' ? rng() < 0.08 : rng() < 0.03;
@@ -416,17 +442,19 @@ export function generateSeedDataset(config: ScoringConfig = DEFAULT_SCORING_CONF
     let inflow = 0;
     let outflow = 0;
     let avgBal = 0;
+    let dailyTxn = 0;
     let txnCount = 0;
     let failedCount = 0;
 
     if (cohort === 'thin') {
-      walletExists = rng() < 0.58; // ~42% of thin cohort have no wallet at all
+      walletExists = rng() < 0.58;
       regLevel = 'basic';
       if (walletExists) {
         inflow = Math.round((1_000 + rng() * 10_000) / 100) * 100;
         outflow = Math.round(inflow * (0.7 + rng() * 0.25));
         avgBal = Math.min(70_000, Math.round(1_000 + rng() * 8_000));
-        txnCount = Math.floor(rng() * 4); // 0-3 txns -> thin file!
+        dailyTxn = Math.min(25_000, Math.round(500 + rng() * 4_500));
+        txnCount = Math.floor(rng() * 4);
         failedCount = txnCount > 0 && rng() < 0.1 ? 1 : 0;
       }
     } else if (cohort === 'mixed') {
@@ -441,6 +469,10 @@ export function generateSeedDataset(config: ScoringConfig = DEFAULT_SCORING_CONF
         regLevel === 'kyc'
           ? Math.round(25_000 + rng() * 180_000)
           : Math.min(70_000, Math.round(8_000 + rng() * 45_000));
+      dailyTxn =
+        regLevel === 'kyc'
+          ? Math.round(15_000 + rng() * 65_000)
+          : Math.min(25_000, Math.round(4_000 + rng() * 18_000));
       txnCount = 6 + Math.floor(rng() * 20);
       failedCount = rng() < 0.25 ? 1 : 0;
     } else {
@@ -455,6 +487,10 @@ export function generateSeedDataset(config: ScoringConfig = DEFAULT_SCORING_CONF
         regLevel === 'kyc'
           ? Math.round(120_000 + rng() * 1_400_000)
           : Math.min(70_000, Math.round(35_000 + rng() * 32_000));
+      dailyTxn =
+        regLevel === 'kyc'
+          ? Math.round(35_000 + rng() * 140_000)
+          : Math.min(25_000, Math.round(10_000 + rng() * 15_000));
       txnCount = 24 + Math.floor(rng() * 40);
       failedCount = rng() < 0.15 ? 1 : 0;
     }
@@ -490,6 +526,10 @@ export function generateSeedDataset(config: ScoringConfig = DEFAULT_SCORING_CONF
               ? 'regular'
               : 'irregular';
 
+    const address = `${STREETS[Math.floor(rng() * STREETS.length)]}, ${10 + Math.floor(rng() * 190)}, ${city.name}`;
+    const volumeTier: VolumeTier = regLevel === 'kyc' ? 'high' : 'low';
+    const hasBankAccount = cohort === 'rich' ? rng() < 0.78 : cohort === 'mixed' ? rng() < 0.35 : rng() < 0.12;
+
     const customer: Customer = {
       id: `cust-${pad(i, 3)}`,
       mobile_no: mobileNo,
@@ -498,6 +538,8 @@ export function generateSeedDataset(config: ScoringConfig = DEFAULT_SCORING_CONF
       date_of_birth: dob,
       gender,
       city: city.name,
+      address,
+      volume_tier: volumeTier,
     };
 
     const telecom: TelecomSource = {
@@ -520,6 +562,7 @@ export function generateSeedDataset(config: ScoringConfig = DEFAULT_SCORING_CONF
       monthly_inflow_aoa: inflow,
       monthly_outflow_aoa: outflow,
       avg_balance_aoa: avgBal,
+      daily_txn_aoa: dailyTxn,
       txn_count_90d: txnCount,
       failed_txn_count_90d: failedCount,
     };
@@ -530,7 +573,7 @@ export function generateSeedDataset(config: ScoringConfig = DEFAULT_SCORING_CONF
       id_verified: idVerified,
       id_issue_date: idVerified ? isoDateMonthsAgo(12 + Math.floor(rng() * 48), 10) : null,
       id_issue_place: idVerified ? city.name : null,
-      address: `${STREETS[Math.floor(rng() * STREETS.length)]}, ${10 + Math.floor(rng() * 190)}, ${city.name}`,
+      address,
       address_verified: addressVerified,
     };
 
@@ -541,70 +584,128 @@ export function generateSeedDataset(config: ScoringConfig = DEFAULT_SCORING_CONF
       tax_filing_status: filingStatus,
     };
 
-    synthetic.push({ customer, telecom, mobileMoney, identity, tax });
+    synthetic.push({ customer, telecom, mobileMoney, identity, tax, has_bank_account: hasBankAccount });
   }
 
   const profiles = [...personas, ...synthetic];
 
-  // Create initial realistic demo applications (leaving Thomas Mateus ready to run live in the demo,
-  // while pre-populating Maria, João, Luísa, Pedro + 14 synthetic customers across decisions)
-  const initialSeeds: Array<{ profileIdx: number; productIdx: number; hoursAgo: number }> = [
-    { profileIdx: 1, productIdx: 1, hoursAgo: 2 },   // Maria Cândida - Smart TV -> Auto-approve (Good, Medium)
-    { profileIdx: 3, productIdx: 0, hoursAgo: 4 },   // Luísa Fernandes - Smartphone -> Manual review
-    { profileIdx: 4, productIdx: 2, hoursAgo: 6 },   // Pedro Kiala - Fridge -> Decline (capped 550)
-    { profileIdx: 2, productIdx: 0, hoursAgo: 8 },   // João Baptista - Smartphone -> Decline (Poor, Low)
-    { profileIdx: 8, productIdx: 0, hoursAgo: 12 },
-    { profileIdx: 11, productIdx: 1, hoursAgo: 15 },
-    { profileIdx: 14, productIdx: 2, hoursAgo: 19 },
-    { profileIdx: 17, productIdx: 0, hoursAgo: 24 },
-    { profileIdx: 22, productIdx: 1, hoursAgo: 28 },
-    { profileIdx: 27, productIdx: 0, hoursAgo: 34 },
-    { profileIdx: 31, productIdx: 2, hoursAgo: 40 },
-    { profileIdx: 36, productIdx: 0, hoursAgo: 45 },
-    { profileIdx: 42, productIdx: 1, hoursAgo: 52 },
-    { profileIdx: 48, productIdx: 3, hoursAgo: 60 },
+  const initialSeeds: Array<{
+    profileIdx: number;
+    equipIdx: number;
+    tier: VolumeTier;
+    status: ApplicationRecord['status'];
+    hoursAgo: number;
+    reasonOverride?: string;
+  }> = [
+    { profileIdx: 1, equipIdx: 1, tier: 'low', status: 'pending_review', hoursAgo: 2 },
+    { profileIdx: 3, equipIdx: 3, tier: 'high', status: 'pending_review', hoursAgo: 4 },
+    { profileIdx: 4, equipIdx: 0, tier: 'low', status: 'pending_review', hoursAgo: 6 },
+    { profileIdx: 2, equipIdx: 0, tier: 'low', status: 'rejected', hoursAgo: 8, reasonOverride: 'Declined after Approver review: low tenure and unverified BI.' },
+    { profileIdx: 8, equipIdx: 1, tier: 'low', status: 'approved', hoursAgo: 12, reasonOverride: 'Approved by Approver based on strong telecom history.' },
+    { profileIdx: 11, equipIdx: 3, tier: 'high', status: 'pending_review', hoursAgo: 15 },
+    { profileIdx: 14, equipIdx: 4, tier: 'high', status: 'approved', hoursAgo: 19, reasonOverride: 'Approved by Approver: verified KYC and affordable EMI.' },
+    { profileIdx: 17, equipIdx: 0, tier: 'low', status: 'approved', hoursAgo: 24, reasonOverride: 'Approved by Approver: good telecom consistency.' },
+    { profileIdx: 22, equipIdx: 2, tier: 'low', status: 'pending_review', hoursAgo: 28 },
+    { profileIdx: 27, equipIdx: 1, tier: 'low', status: 'rejected', hoursAgo: 34, reasonOverride: 'Rejected by Approver: unpaid airtime loan balance.' },
   ];
 
   const applications: ApplicationRecord[] = [];
   const notifications: NotificationRecord[] = [];
+  const auditLogs: AuditLogEntry[] = [];
 
   initialSeeds.forEach((item, idx) => {
     const profile = profiles[item.profileIdx];
-    const prod = PRODUCT_CATALOG[item.productIdx];
-    if (!profile || !prod) return;
+    const equip = catalog[item.equipIdx] ?? catalog[0];
+    if (!profile || !equip) return;
+
+    const matchingPlans = emiPlans.filter((p) => p.tier === item.tier);
+    const plan = matchingPlans[matchingPlans.length - 1] ?? emiPlans[0];
+    const emiCalc = calculateEmiPlan(equip.price_aoa, plan);
 
     const scoreExp = evaluateCreditScore(profile, config);
-    const decisionRes = evaluateLimitAndDecision(scoreExp, prod.defaultPriceAoa, config);
-    const createdAt = new Date(Date.parse('2026-11-12T10:00:00Z') - item.hoursAgo * 3600_000).toISOString();
+    const decisionRes = evaluateLimitAndDecision(
+      scoreExp,
+      equip.price_aoa,
+      config,
+      emiCalc.monthly_emi_aoa
+    );
+    const createdAt = new Date(
+      Date.parse('2026-11-12T10:00:00Z') - item.hoursAgo * 3600_000
+    ).toISOString();
 
+    const appId = `APP-${1001 + idx}`;
     const app: ApplicationRecord = {
-      id: `APP-${1001 + idx}`,
+      id: appId,
       customer_id: profile.customer.id,
       customer_name: profile.customer.full_name,
       mobile_no: profile.customer.mobile_no,
-      product: prod.name,
-      product_price_aoa: prod.defaultPriceAoa,
-      status:
-        decisionRes.decision === 'auto_approve'
-          ? 'approved'
-          : decisionRes.decision === 'manual_review'
-            ? 'pending_review'
-            : 'declined',
+      volume_tier: item.tier,
+      equipment_id: equip.id,
+      product: equip.item_name,
+      product_price_aoa: equip.price_aoa,
+      emi_term_months: emiCalc.term_months,
+      emi_rate_pct: emiCalc.interest_rate_pct,
+      down_payment_aoa: emiCalc.down_payment_aoa,
+      monthly_emi_aoa: emiCalc.monthly_emi_aoa,
+      total_payable_aoa: emiCalc.total_payable_aoa,
+      emi_affordable: decisionRes.emiAffordable,
+      max_monthly_emi_aoa: decisionRes.maxMonthlyEmiAoa,
+      status: item.status,
       score: scoreExp.score,
       band: scoreExp.band,
       confidence: scoreExp.confidence,
       credit_limit_aoa: decisionRes.creditLimitAoa,
       decision: decisionRes.decision,
-      decision_reason: decisionRes.decisionReason,
+      decision_reason: item.reasonOverride ?? decisionRes.decisionReason,
+      decided_by_role: item.status === 'pending_review' ? undefined : 'approver',
+      created_by_role: 'analyst',
+      score_config_version: config.version,
+      application_data: {
+        registration_channel: 'app',
+        pin_created: true,
+        terms_accepted: true,
+        id_doc_type: item.tier === 'high' ? 'BI' : undefined,
+        id_number: item.tier === 'high' ? profile.customer.bi_number : undefined,
+        id_issue_date: profile.identity?.id_issue_date ?? undefined,
+        id_issue_place: profile.identity?.id_issue_place ?? undefined,
+        residential_address: profile.customer.address ?? profile.identity?.address,
+        additional_kyc_verified: item.tier === 'high' ? Boolean(profile.identity?.id_verified) : false,
+        has_bank_account: Boolean(profile.has_bank_account),
+        daily_txn_aoa: profile.mobileMoney?.daily_txn_aoa ?? 0,
+      },
+      profile_snapshot: profile,
       created_at: createdAt,
     };
 
     applications.push(app);
-    notifications.push(
-      ...buildNotificationDrafts(app, decisionRes.decision, config, createdAt)
-    );
+
+    const trigger =
+      item.status === 'approved'
+        ? 'auto_approve'
+        : item.status === 'rejected'
+          ? 'decline'
+          : 'received';
+    notifications.push(...buildNotificationDrafts(app, trigger, config, createdAt));
+
+    auditLogs.push({
+      id: `audit-${appId}-seed`,
+      application_id: appId,
+      step_name:
+        item.status === 'pending_review' ? 'Submitted for Approver Review' : `Approver ${item.status}`,
+      inputs_snapshot: {
+        mobile_no: app.mobile_no,
+        volume_tier: app.volume_tier,
+        product: app.product,
+        emi_term_months: app.emi_term_months,
+      },
+      score_config_version: config.version,
+      score: app.score,
+      decision: item.status,
+      decision_reason: app.decision_reason,
+      role: item.status === 'pending_review' ? 'analyst' : 'approver',
+      timestamp: createdAt,
+    });
   });
 
-  return { profiles, applications, notifications };
+  return { profiles, applications, notifications, auditLogs };
 }
-

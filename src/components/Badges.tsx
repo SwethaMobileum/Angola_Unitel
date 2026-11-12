@@ -1,23 +1,55 @@
-import type { ConfidenceLevel, DecisionOutcome, ScoreBandName, SourceStatus } from '../scoring';
+import type {
+  ApplicationStatus,
+  ConfidenceLevel,
+  DecisionOutcome,
+  ScoreBandName,
+  SourceStatus,
+  VolumeTier,
+} from '../scoring';
 
 export function BandBadge({ band }: { band: ScoreBandName }) {
-  const cls = `badge band-${band.toLowerCase()}`;
-  return <span className={cls}>{band}</span>;
+  return <span className={`badge band-${band.toLowerCase()}`}>{band}</span>;
 }
 
 export function ConfidenceBadge({ confidence }: { confidence: ConfidenceLevel }) {
-  const cls = `badge conf-${confidence.toLowerCase()}`;
-  return <span className={cls}>Confidence: {confidence}</span>;
+  return <span className={`badge conf-${confidence.toLowerCase()}`}>Confidence: {confidence}</span>;
 }
 
-export function DecisionBadge({ decision }: { decision: DecisionOutcome }) {
-  const label =
-    decision === 'auto_approve'
-      ? 'Approved'
-      : decision === 'manual_review'
-        ? 'Manual Review'
-        : 'Declined';
-  return <span className={`badge decision-${decision}`}>{label}</span>;
+export function StatusBadge({ status }: { status: ApplicationStatus }) {
+  if (status === 'approved') {
+    return <span className="badge status-approved">✓ Approved</span>;
+  }
+  if (status === 'rejected') {
+    return <span className="badge status-rejected">✕ Rejected</span>;
+  }
+  if (status === 'more_info_requested') {
+    return <span className="badge status-pending">◷ More Info</span>;
+  }
+  if (status === 'draft') {
+    return <span className="badge status-pending">◷ Draft</span>;
+  }
+  if (status === 'scored') {
+    return <span className="badge status-pending">◷ Scored</span>;
+  }
+  return <span className="badge status-pending">◷ Pending Review</span>;
+}
+
+export function SuggestedDecisionBadge({ decision }: { decision: DecisionOutcome }) {
+  if (decision === 'auto_approve') {
+    return <span className="badge status-approved">✓ Auto-approve candidate</span>;
+  }
+  if (decision === 'manual_review') {
+    return <span className="badge status-pending">◷ Manual review</span>;
+  }
+  return <span className="badge status-rejected">✕ Decline (Suggested)</span>;
+}
+
+export function VolumeTierBadge({ tier }: { tier: VolumeTier }) {
+  return (
+    <span className={`badge ${tier === 'high' ? 'band-good' : 'conf-low'}`}>
+      {tier === 'high' ? 'High Volume (KYC)' : 'Low Volume (Basic)'}
+    </span>
+  );
 }
 
 export function SourceStatusBadge({ status }: { status: SourceStatus }) {
@@ -38,4 +70,3 @@ export function orangeRampForRatio(ratio: number): string {
   if (ratio >= 0.4) return 'var(--orange-400)';
   return 'var(--orange-300)';
 }
-

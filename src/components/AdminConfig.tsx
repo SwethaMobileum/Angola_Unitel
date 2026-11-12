@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { DEFAULT_SCORING_CONFIG, cloneConfig } from '../scoring';
 import type {
   ConfidenceLevel,
-  NotificationTrigger,
   RangeRule,
   Role,
   ScoreBandName,
@@ -11,6 +10,7 @@ import type {
 
 interface AdminConfigProps {
   config: ScoringConfig;
+  configHistory: ScoringConfig[];
   role: Role;
   onSwitchRole: (role: Role) => void;
   onSaveConfig: (nextConfig: ScoringConfig) => void;
@@ -19,10 +19,10 @@ interface AdminConfigProps {
 
 const BANDS: ScoreBandName[] = ['Excellent', 'Good', 'Fair', 'Poor'];
 const CONFIDENCES: ConfidenceLevel[] = ['High', 'Medium', 'Low'];
-const TRIGGERS: NotificationTrigger[] = ['received', 'auto_approve', 'manual_review', 'decline'];
 
 export function AdminConfig({
   config,
+  configHistory,
   role,
   onSwitchRole,
   onSaveConfig,
@@ -53,7 +53,7 @@ export function AdminConfig({
     };
     onSaveConfig(next);
     setSavedMessage(
-      `Saved Config v${next.version}. All 300 customer scores, limits, and dashboard metrics recomputed.`
+      `Saved Config v${next.version}. All subscriber scores, limits, and dashboard metrics recomputed.`
     );
   };
 
@@ -61,7 +61,7 @@ export function AdminConfig({
     const base = cloneConfig(DEFAULT_SCORING_CONFIG);
     setDraft(base);
     onResetDefault();
-    setSavedMessage('Reset scoring configuration to default v1.');
+    setSavedMessage('Reset scoring rules to default v1.');
   };
 
   const updateRangeRule = (
@@ -80,7 +80,7 @@ export function AdminConfig({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div className="page-header">
         <div>
-          <h2 className="page-title">Admin Configuration &amp; Versioning</h2>
+          <h2 className="page-title">Scoring Rules &amp; Configuration</h2>
           <p className="page-subtitle">
             Active version: <strong>v{config.version}</strong> • Last updated:{' '}
             {new Date(config.updatedAt).toLocaleString()}
@@ -112,8 +112,8 @@ export function AdminConfig({
           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}
         >
           <span>
-            You are currently viewing as <strong>{role.toUpperCase()}</strong>. Switch to{' '}
-            <strong>Admin</strong> to edit weights, range tables, credit limits, and templates.
+            You are viewing as <strong>{role.toUpperCase()}</strong>. Switch to{' '}
+            <strong>Admin</strong> to edit scoring rules.
           </span>
           <button
             type="button"
@@ -195,19 +195,19 @@ export function AdminConfig({
               />
             </div>
           </div>
-          <div style={{ fontSize: 12, marginTop: 10, opacity: 0.85 }}>
-            Note: The scoring engine automatically re-normalizes active category weights to a 100-pt
-            scale (so changing Telecom from 45 to 35 immediately re-weights all scores).
+          <div style={{ fontSize: 12, marginTop: 10 }}>
+            Active category weights automatically re-normalize to 100 points (including when thin-file
+            wallets are excluded).
           </div>
         </div>
 
         <div className="card">
           <div className="card-header">
-            <h3 className="card-title">Hard Caps &amp; Deductions</h3>
+            <h3 className="card-title">Hard Caps, Deductions &amp; Bands</h3>
           </div>
           <div className="grid-3">
             <div>
-              <label className="field-label">Unverified BI Max Score</label>
+              <label className="field-label">Unverified BI Cap</label>
               <input
                 type="number"
                 className="input"
@@ -222,7 +222,7 @@ export function AdminConfig({
               />
             </div>
             <div>
-              <label className="field-label">Unpaid Loan Max Score</label>
+              <label className="field-label">Unpaid Loan Cap</label>
               <input
                 type="number"
                 className="input"
@@ -237,7 +237,7 @@ export function AdminConfig({
               />
             </div>
             <div>
-              <label className="field-label">Suspended NIF Deduction (pts)</label>
+              <label className="field-label">Suspended NIF Deduction</label>
               <input
                 type="number"
                 className="input"
@@ -338,10 +338,10 @@ export function AdminConfig({
         </div>
       </div>
 
-      {/* Key Range Tables */}
+      {/* Range Tables */}
       <div className="card">
         <div className="card-header">
-          <h3 className="card-title">Parameter Range Tables (% of Parameter Max Points)</h3>
+          <h3 className="card-title">Parameter Range Tables (% of Max Points)</h3>
         </div>
         <div className="grid-2">
           {(
@@ -383,51 +383,48 @@ export function AdminConfig({
         </div>
       </div>
 
-      {/* Notification Templates */}
+      {/* Version History */}
       <div className="card">
         <div className="card-header">
-          <h3 className="card-title">Editable Notification Templates</h3>
+          <h3 className="card-title">Scoring Configuration Version History</h3>
         </div>
-        <div className="grid-2">
-          {TRIGGERS.map((trigger) => (
-            <div key={trigger} className="card-tinted">
-              <div style={{ fontWeight: 700, marginBottom: 8, textTransform: 'capitalize' }}>
-                {trigger.replace('_', ' ')}
-              </div>
-              <label className="field-label">SMS Template</label>
-              <textarea
-                className="textarea"
-                rows={2}
-                disabled={!isAdmin}
-                value={draft.templates[trigger].sms}
-                onChange={(e) =>
-                  setDraft((p) => {
-                    const next = cloneConfig(p);
-                    next.templates[trigger].sms = e.target.value;
-                    return next;
-                  })
-                }
-                style={{ marginBottom: 8 }}
-              />
-              <label className="field-label">Email Subject</label>
-              <input
-                type="text"
-                className="input"
-                disabled={!isAdmin}
-                value={draft.templates[trigger].emailSubject}
-                onChange={(e) =>
-                  setDraft((p) => {
-                    const next = cloneConfig(p);
-                    next.templates[trigger].emailSubject = e.target.value;
-                    return next;
-                  })
-                }
-              />
-            </div>
-          ))}
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Version</th>
+                <th>Updated At</th>
+                <th>Weights (Telecom / ID / MM / Tax)</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {configHistory.map((h) => (
+                <tr key={`${h.version}-${h.updatedAt}`}>
+                  <td style={{ fontWeight: 700 }}>
+                    v{h.version} {h.version === config.version ? '(Active)' : ''}
+                  </td>
+                  <td>{new Date(h.updatedAt).toLocaleString()}</td>
+                  <td>
+                    {h.weights.telecom} / {h.weights.identity} / {h.weights.mobileMoney} /{' '}
+                    {h.weights.tax}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={!isAdmin || h.version === config.version}
+                      onClick={() => onSaveConfig({ ...cloneConfig(h), version: config.version + 1, updatedAt: new Date().toISOString() })}
+                    >
+                      Restore as v{config.version + 1}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   );
 }
-

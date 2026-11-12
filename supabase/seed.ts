@@ -1,5 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
-import { DEFAULT_SCORING_CONFIG } from '../src/scoring';
+import {
+  DEFAULT_EMI_PLANS,
+  DEFAULT_EQUIPMENT_CATALOG,
+  DEFAULT_SCORING_CONFIG,
+} from '../src/scoring';
 import { generateSeedDataset } from '../src/data/seedGenerator';
 
 async function main() {
@@ -14,9 +18,13 @@ async function main() {
   }
 
   const supabase = createClient(url, key);
-  const { profiles, applications, notifications } = generateSeedDataset(DEFAULT_SCORING_CONFIG);
+  const { profiles, applications, notifications, auditLogs } = generateSeedDataset(
+    DEFAULT_SCORING_CONFIG,
+    DEFAULT_EQUIPMENT_CATALOG,
+    DEFAULT_EMI_PLANS
+  );
 
-  console.log(`Seeding ${profiles.length} customers and 4 source tables...`);
+  console.log(`Seeding ${profiles.length} customers, catalog, EMI plans, applications & logs...`);
 
   const customers = profiles.map((p) => p.customer);
   const telecoms = profiles.map((p) => p.telecom!).filter(Boolean);
@@ -39,6 +47,17 @@ async function main() {
   await upsertBatch('src_identity', identities, 'mobile_no');
   await upsertBatch('src_tax', taxes, 'mobile_no');
 
+  await upsertBatch('equipment_catalog', DEFAULT_EQUIPMENT_CATALOG, 'id');
+  await upsertBatch('emi_config', DEFAULT_EMI_PLANS, 'id');
+
+  const tplRows = Object.entries(DEFAULT_SCORING_CONFIG.templates).map(([k, v]) => ({
+    trigger_key: k,
+    sms: v.sms,
+    email_subject: v.emailSubject,
+    email_body: v.emailBody,
+  }));
+  await upsertBatch('notification_templates', tplRows, 'trigger_key');
+
   const { error: cfgErr } = await supabase.from('scoring_config').upsert(
     {
       id: DEFAULT_SCORING_CONFIG.id,
@@ -49,11 +68,19 @@ async function main() {
   );
   if (cfgErr) throw new Error(`scoring_config upsert failed: ${cfgErr.message}`);
 
-  await upsertBatch('applications', applications, 'id');
+  const appRows = applications.map(({ application_data: _ad, profile_snapshot: _ps, ...rest }) => rest);
+  await upsertBatch('applications', appRows, 'id');
+
+  const appDataRows = applications
+    .filter((a) => a.application_data)
+    .map((a) => ({ application_id: a.id, ...a.application_data }));
+  await upsertBatch('application_data', appDataRows, 'application_id');
+
   await upsertBatch('notifications', notifications, 'id');
+  await upsertBatch('audit_log', auditLogs, 'id');
 
   console.log(
-    `Seed complete: ${customers.length} customers, ${applications.length} applications, ${notifications.length} notifications.`
+    `Seed complete: ${customers.length} customers, ${DEFAULT_EQUIPMENT_CATALOG.length} catalog items, ${DEFAULT_EMI_PLANS.length} EMI plans, ${applications.length} applications, ${auditLogs.length} audit logs.`
   );
 }
 
@@ -61,4 +88,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-

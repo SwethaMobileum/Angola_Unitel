@@ -16,13 +16,15 @@ export function buildNotificationDrafts(
   config: ScoringConfig,
   timestamp: string = new Date().toISOString()
 ): NotificationRecord[] {
-  const tpl = config.templates[trigger];
+  const tpl = config.templates[trigger] ?? config.templates.manual_review;
   const vars: Record<string, string> = {
     application_id: application.id,
     customer_name: application.customer_name,
     mobile_no: application.mobile_no,
     product: application.product,
     product_price: formatAoa(application.product_price_aoa),
+    monthly_emi: formatAoa(application.monthly_emi_aoa),
+    emi_term: String(application.emi_term_months),
     score: String(application.score),
     band: application.band,
     confidence: application.confidence,
@@ -56,4 +58,3 @@ export function buildNotificationDrafts(
     },
   ];
 }
-
