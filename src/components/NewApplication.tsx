@@ -10,6 +10,7 @@ import {
 import type {
   ApplicationData,
   ApplicationRecord,
+  ApproverRecipient,
   AuditLogEntry,
   CustomerProfile,
   EmiPlanConfig,
@@ -40,6 +41,8 @@ interface NewApplicationProps {
   emiPlans: EmiPlanConfig[];
   role: Role;
   initialCustomerId?: string;
+  approverRecipients?: ApproverRecipient[];
+  isDemoMode?: boolean;
   onSubmitApplication: (
     app: ApplicationRecord,
     newOrUpdatedProfile: CustomerProfile,
@@ -60,9 +63,16 @@ const STEP_LABELS = [
   '6. Review & Submit',
 ];
 
+const LAST_SUBMITTER_EMAIL_KEY = 'unitel_last_submitter_email';
+const LAST_SUBMITTER_NAME_KEY = 'unitel_last_submitter_name';
+
 interface DraftState {
   step: number;
-  // Step 1
+  // Submitter & Customer Emails
+  submittedByName: string;
+  submittedByEmail: string;
+  customerEmail: string;
+  // Step 1 Customer Fields
   fullName: string;
   mobileNo: string;
   biNumber: string;
@@ -116,8 +126,19 @@ interface DraftState {
 function createEmptyDraft(catalog: EquipmentItem[], emiPlans: EmiPlanConfig[]): DraftState {
   const defaultEq = catalog.find((c) => c.min_tier === 'low' && c.active) ?? catalog[0];
   const defaultPlan = emiPlans.find((p) => p.tier === 'low') ?? emiPlans[0];
+  let rememberedEmail = '';
+  let rememberedName = '';
+  try {
+    rememberedEmail = localStorage.getItem(LAST_SUBMITTER_EMAIL_KEY) || '';
+    rememberedName = localStorage.getItem(LAST_SUBMITTER_NAME_KEY) || '';
+  } catch {
+    // Ignore storage issues
+  }
   return {
     step: 0,
+    submittedByName: rememberedName,
+    submittedByEmail: rememberedEmail,
+    customerEmail: '',
     fullName: '',
     mobileNo: '+244 923 ',
     biNumber: '',
@@ -180,6 +201,8 @@ export function NewApplication({
   emiPlans,
   role,
   initialCustomerId,
+  approverRecipients = [],
+  isDemoMode = true,
   onSubmitApplication,
   onSaveWhatIfVersion,
   onToast,
@@ -187,7 +210,13 @@ export function NewApplication({
   const [draft, setDraft] = useState<DraftState>(() => {
     try {
       const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
-      if (saved) return JSON.parse(saved) as DraftState;
+      if (saved) {
+        const parsed = JSON.parse(saved) as DraftState;
+        return {
+          ...createEmptyDraft(catalog, emiPlans),
+          ...parsed,
+        };
+      }
     } catch {
       // ignore
     }
@@ -416,6 +445,21 @@ export function NewApplication({
   const validateStep = (targetStep: number): boolean => {
     const errors: Record<string, string> = {};
     if (targetStep === 0) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!draft.submittedByEmail.trim()) {
+        errors.submittedByEmail = 'Your email (for notifications) is required.';
+      } else if (!emailRegex.test(draft.submittedByEmail.trim())) {
+        errors.submittedByEmail = 'Please enter a valid email address (e.g. analyst@unitel-demo.ao).';
+      }
+
+      if (!draft.submittedByName.trim()) {
+        errors.submittedByName = 'Your name is required.';
+      }
+
+      if (draft.customerEmail.trim() && !emailRegex.test(draft.customerEmail.trim())) {
+        errors.customerEmail = 'Please enter a valid customer email address or leave blank.';
+      }
+
       if (!draft.fullName.trim()) errors.fullName = 'Full name is required.';
       if (!isValidUnitelMobile(draft.mobileNo)) {
         errors.mobileNo = 'Enter a valid Unitel Angola number (+244 9XX XXX XXX).';
@@ -543,8 +587,26 @@ export function NewApplication({
       score_config_version: config.version,
       application_data: appData,
       profile_snapshot: liveProfile,
+      submitted_by_name: draft.submittedByName.trim(),
+      submitted_by_email: draft.submittedByEmail.trim(),
+      customer_email: draft.customerEmail.trim() || undefined,
       created_at: now,
     };
+
+    if (draft.submittedByEmail.trim()) {
+      try {
+        localStorage.setItem(LAST_SUBMITTER_EMAIL_KEY, draft.submittedByEmail.trim());
+      } catch {
+        // ignore
+      }
+    }
+    if (draft.submittedByName.trim()) {
+      try {
+        localStorage.setItem(LAST_SUBMITTER_NAME_KEY, draft.submittedByName.trim());
+      } catch {
+        // ignore
+      }
+    }
 
     const auditEntries: AuditLogEntry[] = [
       {
@@ -557,6 +619,9 @@ export function NewApplication({
           volume_tier: app.volume_tier,
           channel: appData.registration_channel,
           has_bank_account: appData.has_bank_account,
+          submitted_by_name: app.submitted_by_name,
+          submitted_by_email: app.submitted_by_email,
+          customer_email: app.customer_email,
         },
         score_config_version: config.version,
         decision: 'captured',
@@ -638,6 +703,47 @@ export function NewApplication({
             <strong>Thin-File Explanation:</strong> {exp.thinFileNotice}
           </div>
         )}
+
+        {/* Email Notification Dispatch Summary */}
+        {(() => {
+          const activeApprovers = approverRecipients.filter((a) => a.active);
+          return (
+            <div
+              className="card-tinted"
+              style={{
+                borderLeft: '4px solid var(--brand-500)',
+                padding: '12px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <strong style={{ color: 'var(--brand-700)' }}>Email Notification:</strong>
+                {isDemoMode ? (
+                  <span className="badge band-fair">Email is in demo mode</span>
+                ) : (
+                  <span className="badge band-good">Approvers have been notified</span>
+                )}
+              </div>
+              <div style={{ fontSize: 13 }}>
+                {isDemoMode ? (
+                  <span>
+                    Email credentials are not configured. Approver notifications recorded as <em>Not sent (demo mode)</em> in the log.
+                  </span>
+                ) : (
+                  <span>
+                    Sent to {activeApprovers.length} active approver(s):{' '}
+                    <strong>{activeApprovers.map((a) => a.email).join(', ') || 'None configured'}</strong>
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+                Decision outcome will be emailed to Analyst: <strong>{app.submitted_by_email}</strong>.
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="grid-4">
           <div className="card">
@@ -735,7 +841,63 @@ export function NewApplication({
       {draft.step === 0 && (
         <div className="card">
           <div className="card-header">
-            <h3 className="card-title">Step 1: Customer Details Collection</h3>
+            <h3 className="card-title">Step 1: Customer Details &amp; Submitter Notification</h3>
+          </div>
+
+          {/* Submitter (Analyst) Notification Information */}
+          <div className="card-tinted" style={{ marginBottom: 16 }}>
+            <h4 style={{ margin: '0 0 10px', color: 'var(--brand-700)', fontSize: 14 }}>
+              Submitter Information (Email Notifications)
+            </h4>
+            <div className="grid-2">
+              <div>
+                <label className="field-label">Your Name *</label>
+                <input
+                  type="text"
+                  className={`input ${stepErrors.submittedByName ? 'input-error' : ''}`}
+                  placeholder="e.g. Thomas Silva"
+                  value={draft.submittedByName}
+                  onChange={(e) => setDraft((p) => ({ ...p, submittedByName: e.target.value }))}
+                />
+                {stepErrors.submittedByName && (
+                  <div className="field-error">{stepErrors.submittedByName}</div>
+                )}
+              </div>
+
+              <div>
+                <label className="field-label">Your email (for notifications) *</label>
+                <input
+                  type="email"
+                  className={`input ${stepErrors.submittedByEmail ? 'input-error' : ''}`}
+                  placeholder="e.g. analyst@unitel-demo.ao"
+                  value={draft.submittedByEmail}
+                  onChange={(e) => setDraft((p) => ({ ...p, submittedByEmail: e.target.value }))}
+                />
+                <div className="field-helper">
+                  You will receive an email when your application is approved or rejected.
+                </div>
+                {stepErrors.submittedByEmail && (
+                  <div className="field-error">{stepErrors.submittedByEmail}</div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <label className="field-label">Customer Email (Optional)</label>
+              <input
+                type="email"
+                className={`input ${stepErrors.customerEmail ? 'input-error' : ''}`}
+                placeholder="e.g. customer@example.ao"
+                value={draft.customerEmail}
+                onChange={(e) => setDraft((p) => ({ ...p, customerEmail: e.target.value }))}
+              />
+              <div className="field-helper">
+                Notifications are only sent to the customer if enabled in Admin settings (default off).
+              </div>
+              {stepErrors.customerEmail && (
+                <div className="field-error">{stepErrors.customerEmail}</div>
+              )}
+            </div>
           </div>
 
           <div className="card-tinted" style={{ marginBottom: 16 }}>
@@ -1551,6 +1713,31 @@ export function NewApplication({
                 <div>
                   Monthly EMI: <strong>{formatAoa(emiCalc.monthly_emi_aoa)}</strong>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Submitter & Notifications Review */}
+          <div className="card-tinted" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <strong>Analyst Submitter &amp; Notifications</strong>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setDraft((p) => ({ ...p, step: 0 }))}
+              >
+                Edit
+              </button>
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+              <div>
+                Submitted By: <strong>{draft.submittedByName || 'Thomas Silva'}</strong> ({draft.submittedByEmail})
+              </div>
+              {draft.customerEmail && (
+                <div>Customer Email: <strong>{draft.customerEmail}</strong> (Optional)</div>
+              )}
+              <div style={{ color: 'var(--brand-700)', fontWeight: 600, marginTop: 4 }}>
+                Approvers will be notified by email when you submit.
               </div>
             </div>
           </div>

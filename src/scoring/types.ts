@@ -25,6 +25,29 @@ export type NotificationTrigger =
   | 'decline'
   | 'more_info_requested';
 
+export type NotificationEventType = 'submitted' | 'approved' | 'rejected' | 'more_info' | 'test';
+
+export type NotificationStatus = 'queued' | 'sent' | 'failed' | 'demo' | 'simulated_sent';
+
+export interface ApproverRecipient {
+  id: string;
+  name: string;
+  email: string;
+  active: boolean;
+}
+
+export interface EditableNotificationTemplate {
+  event_type: 'submitted' | 'approved' | 'rejected' | 'more_info';
+  subject: string;
+  body_html: string;
+  body_text: string;
+  version: number;
+}
+
+export interface NotificationSettings {
+  notify_customer: boolean;
+}
+
 export interface Customer {
   id: string;
   mobile_no: string;
@@ -284,6 +307,9 @@ export interface ApplicationRecord {
   score_config_version?: number;
   application_data?: ApplicationData;
   profile_snapshot?: CustomerProfile;
+  submitted_by_name?: string;
+  submitted_by_email?: string;
+  customer_email?: string;
   created_at: string;
 }
 
@@ -293,11 +319,16 @@ export interface NotificationRecord {
   customer_name: string;
   mobile_no: string;
   channel: NotificationChannel;
-  template: NotificationTrigger;
+  template?: NotificationTrigger;
+  event_type?: NotificationEventType;
+  recipient_email?: string;
+  recipient_role?: Role | 'customer' | 'approver';
   subject?: string;
   body: string;
-  status: 'simulated_sent';
+  status: NotificationStatus;
+  error_message?: string;
   created_at: string;
+  sent_at?: string;
 }
 
 export interface AuditLogEntry {

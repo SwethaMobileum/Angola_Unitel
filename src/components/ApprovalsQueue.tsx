@@ -46,6 +46,12 @@ export function ApprovalsQueue({
   const items = filter === 'pending' ? pendingItems : applications;
   const canAct = role === 'approver' || role === 'admin';
 
+  const [confirmDialog, setConfirmDialog] = useState<{
+    app: ApplicationRecord;
+    status: Extract<ApplicationStatus, 'approved' | 'rejected' | 'more_info_requested'>;
+    reason: string;
+  } | null>(null);
+
   const handleAction = (
     appId: string,
     status: Extract<ApplicationStatus, 'approved' | 'rejected' | 'more_info_requested'>
@@ -63,7 +69,13 @@ export function ApprovalsQueue({
       delete next[appId];
       return next;
     });
-    onDecision(appId, status, reason);
+
+    const targetApp = applications.find((a) => a.id === appId);
+    if (targetApp) {
+      setConfirmDialog({ app: targetApp, status, reason });
+    } else {
+      onDecision(appId, status, reason);
+    }
   };
 
   return (
@@ -235,6 +247,85 @@ export function ApprovalsQueue({
           </div>
         )}
       </div>
+
+      {/* Decision Confirmation Modal with Notification Preview */}
+      {confirmDialog && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-dialog">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: 18, color: 'var(--brand-700)' }}>
+                Confirm Approver Decision
+              </h3>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setConfirmDialog(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+              <div>Application: <strong>{confirmDialog.app.id}</strong></div>
+              <div>Customer: <strong>{confirmDialog.app.customer_name}</strong> ({confirmDialog.app.mobile_no})</div>
+              <div>Equipment: <strong>{confirmDialog.app.product}</strong></div>
+              <div>
+                Action:{' '}
+                <strong style={{
+                  color:
+                    confirmDialog.status === 'approved'
+                      ? 'var(--slate-700)'
+                      : confirmDialog.status === 'rejected'
+                        ? 'var(--brand-700)'
+                        : 'var(--text)',
+                  textTransform: 'uppercase',
+                }}>
+                  {confirmDialog.status.replace(/_/g, ' ')}
+                </strong>
+              </div>
+              <div style={{ marginTop: 6 }}>
+                Reason: <em>"{confirmDialog.reason}"</em>
+              </div>
+            </div>
+
+            <div
+              className="card-tinted"
+              style={{
+                borderLeft: '4px solid var(--brand-500)',
+                padding: '12px 14px',
+                background: 'var(--brand-50)',
+              }}
+            >
+              <div style={{ fontWeight: 600, color: 'var(--brand-700)', marginBottom: 2 }}>
+                Email Notification
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text)' }}>
+                An email will be sent to <strong>{confirmDialog.app.submitted_by_email || 'analyst@unitel-demo.ao'}</strong>.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setConfirmDialog(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  onDecision(confirmDialog.app.id, confirmDialog.status, confirmDialog.reason);
+                  setConfirmDialog(null);
+                }}
+              >
+                Confirm &amp; Send Email Notification
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

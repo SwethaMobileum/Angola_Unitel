@@ -56,6 +56,10 @@ export function ApplicationDetail({
 }: ApplicationDetailProps) {
   const [decisionReason, setDecisionReason] = useState('');
   const [reasonError, setReasonError] = useState('');
+  const [confirmStatus, setConfirmStatus] = useState<Extract<
+    ApplicationStatus,
+    'approved' | 'rejected' | 'more_info_requested'
+  > | null>(null);
   const [whatIfProfile, setWhatIfProfile] = useState<CustomerProfile | null>(null);
 
   const activeProfile = application.profile_snapshot ?? profile;
@@ -85,7 +89,13 @@ export function ApplicationDetail({
       return;
     }
     setReasonError('');
-    onApproverAction(application.id, status, decisionReason.trim());
+    setConfirmStatus(status);
+  };
+
+  const handleConfirmAction = () => {
+    if (!confirmStatus) return;
+    onApproverAction(application.id, confirmStatus, decisionReason.trim());
+    setConfirmStatus(null);
     setDecisionReason('');
   };
 
@@ -236,6 +246,24 @@ export function ApplicationDetail({
             <h3 className="card-title">Approver Decision Panel</h3>
             <SuggestedDecisionBadge decision={application.decision} />
           </div>
+
+          <div
+            className="card-tinted"
+            style={{
+              borderLeft: '4px solid var(--brand-500)',
+              padding: '10px 14px',
+              marginBottom: 12,
+              background: 'var(--brand-50)',
+            }}
+          >
+            <div style={{ fontWeight: 600, color: 'var(--brand-700)', fontSize: 13 }}>
+              Notification Dispatch Notice
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--text)' }}>
+              An email will be sent to <strong>{application.submitted_by_email || 'analyst@unitel-demo.ao'}</strong> before the decision is confirmed.
+            </div>
+          </div>
+
           <label className="field-label">Decision Reason (Required)</label>
           <input
             type="text"
@@ -367,6 +395,82 @@ export function ApplicationDetail({
           )}
         </div>
       </div>
+
+      {/* Decision Confirmation Modal with Notification Preview */}
+      {confirmStatus && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-dialog">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: 18, color: 'var(--brand-700)' }}>
+                Confirm Approver Decision
+              </h3>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setConfirmStatus(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+              <div>Application: <strong>{application.id}</strong></div>
+              <div>Customer: <strong>{application.customer_name}</strong> ({application.mobile_no})</div>
+              <div>Equipment: <strong>{application.product}</strong></div>
+              <div>
+                Action:{' '}
+                <strong style={{
+                  color:
+                    confirmStatus === 'approved'
+                      ? 'var(--slate-700)'
+                      : confirmStatus === 'rejected'
+                        ? 'var(--brand-700)'
+                        : 'var(--text)',
+                  textTransform: 'uppercase',
+                }}>
+                  {confirmStatus.replace(/_/g, ' ')}
+                </strong>
+              </div>
+              <div style={{ marginTop: 6 }}>
+                Reason: <em>"{decisionReason}"</em>
+              </div>
+            </div>
+
+            <div
+              className="card-tinted"
+              style={{
+                borderLeft: '4px solid var(--brand-500)',
+                padding: '12px 14px',
+                background: 'var(--brand-50)',
+              }}
+            >
+              <div style={{ fontWeight: 600, color: 'var(--brand-700)', marginBottom: 2 }}>
+                Email Notification
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text)' }}>
+                An email will be sent to <strong>{application.submitted_by_email || 'analyst@unitel-demo.ao'}</strong>.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setConfirmStatus(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleConfirmAction}
+              >
+                Confirm &amp; Send Email Notification
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

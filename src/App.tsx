@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  DEFAULT_EMAIL_TEMPLATES,
   DEFAULT_SCORING_CONFIG,
+  buildApplicationSubmittedEmails,
+  buildDecisionEmails,
   buildNotificationDrafts,
   calculateEmiPlan,
   cloneConfig,
@@ -10,11 +13,14 @@ import {
 import type {
   ApplicationRecord,
   ApplicationStatus,
+  ApproverRecipient,
   AuditLogEntry,
   CustomerProfile,
+  EditableNotificationTemplate,
   EmiPlanConfig,
   EquipmentItem,
   NotificationRecord,
+  NotificationSettings,
   Role,
   ScoringConfig,
 } from './scoring';
@@ -29,6 +35,7 @@ import {
   saveLocalFallback,
   type PortalState,
 } from './lib/dataService';
+import { isEmailConfigured, retryNotification, sendNotificationBatch } from './lib/emailService';
 import { ChooseRoleScreen } from './components/ChooseRoleScreen';
 import { Dashboard } from './components/Dashboard';
 import { NewApplication } from './components/NewApplication';
@@ -167,12 +174,29 @@ export default function App() {
     );
   }
 
-  const handleSubmitApplication = (
+  const handleSubmitApplication = async (
     app: ApplicationRecord,
     newOrUpdatedProfile: CustomerProfile,
     auditEntries: AuditLogEntry[]
   ) => {
-    const receivedNotifs = buildNotificationDrafts(app, 'received', state.config, app.created_at);
+    // 1. Build and dispatch Email 1 to active approvers
+    const submittedTemplate =
+      state.emailTemplates?.submitted ?? DEFAULT_EMAIL_TEMPLATES.submitted;
+    const submittedEmails = buildApplicationSubmittedEmails(
+      app,
+      state.approverRecipients,
+      submittedTemplate,
+      window.location.origin
+    );
+
+    // 2. Dispatch emails asynchronously (never blocks application creation)
+    const { updatedNotifications, auditEntries: notifAudits } =
+      await sendNotificationBatch(submittedEmails, state.notifications, role);
+
+    // Also build legacy draft for backward compatibility
+    const legacyNotifs = buildNotificationDrafts(app, 'received', state.config, app.created_at);
+    const combinedNotifs = [...updatedNotifications, ...legacyNotifs];
+
     updateState((prev) => {
       const exists = prev.profiles.some(
         (p) => p.customer.id === newOrUpdatedProfile.customer.id
@@ -187,16 +211,16 @@ export default function App() {
         ...prev,
         profiles: nextProfiles,
         applications: [app, ...prev.applications.filter((a) => a.id !== app.id)],
-        notifications: [...receivedNotifs, ...prev.notifications],
-        auditLogs: [...auditEntries.reverse(), ...prev.auditLogs],
+        notifications: [...combinedNotifs, ...prev.notifications],
+        auditLogs: [...notifAudits, ...auditEntries.reverse(), ...prev.auditLogs],
       };
     });
     void persistProfileUpdate(newOrUpdatedProfile);
-    void persistApplication(app, receivedNotifs, auditEntries[auditEntries.length - 1]);
+    void persistApplication(app, combinedNotifs, auditEntries[auditEntries.length - 1]);
     showToast(`Application ${app.id} submitted to Approver queue.`);
   };
 
-  const handleApproverDecision = (
+  const handleApproverDecision = async (
     appId: string,
     status: Extract<ApplicationStatus, 'approved' | 'rejected' | 'more_info_requested'>,
     reason: string
@@ -213,6 +237,27 @@ export default function App() {
       overridden_by: role,
     };
 
+    // 1. Determine template and build Email 2 (to submitter and optionally customer)
+    const templateKey =
+      status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : 'more_info';
+    const emailTemplate =
+      state.emailTemplates?.[templateKey] ?? DEFAULT_EMAIL_TEMPLATES[templateKey];
+
+    const decisionEmails = buildDecisionEmails(
+      updated,
+      status,
+      reason,
+      role,
+      role === 'approver' ? 'Credit Approver Silva' : 'Admin User',
+      emailTemplate,
+      state.notificationSettings?.notify_customer ?? false,
+      window.location.origin
+    );
+
+    // 2. Dispatch decision emails asynchronously (never blocks decision)
+    const { updatedNotifications, auditEntries: notifAudits } =
+      await sendNotificationBatch(decisionEmails, state.notifications, role);
+
     const trigger =
       status === 'approved'
         ? 'auto_approve'
@@ -220,12 +265,13 @@ export default function App() {
           ? 'decline'
           : 'more_info_requested';
 
-    const notifs: NotificationRecord[] = buildNotificationDrafts(
+    const legacyNotifs: NotificationRecord[] = buildNotificationDrafts(
       updated,
       trigger,
       state.config,
       now
     );
+    const combinedNotifs = [...updatedNotifications, ...legacyNotifs];
 
     const audit: AuditLogEntry = {
       id: `audit-${appId}-${Date.now()}`,
@@ -234,6 +280,8 @@ export default function App() {
       inputs_snapshot: {
         previous_status: target.status,
         suggested_decision: target.decision,
+        submitted_by_email: updated.submitted_by_email,
+        customer_email: updated.customer_email,
       },
       score_config_version: target.score_config_version ?? state.config.version,
       score: target.score,
@@ -246,11 +294,41 @@ export default function App() {
     updateState((prev) => ({
       ...prev,
       applications: prev.applications.map((a) => (a.id === appId ? updated : a)),
-      notifications: [...notifs, ...prev.notifications],
-      auditLogs: [audit, ...prev.auditLogs],
+      notifications: [...combinedNotifs, ...prev.notifications],
+      auditLogs: [...notifAudits, audit, ...prev.auditLogs],
     }));
-    void persistApplication(updated, notifs, audit);
-    showToast(`Application ${appId} marked as ${status.replace(/_/g, ' ')}. SMS & Email logged.`);
+    void persistApplication(updated, combinedNotifs, audit);
+    showToast(`Application ${appId} marked as ${status.replace(/_/g, ' ')}. Email notification dispatched.`);
+  };
+
+  const handleRetryNotification = async (notifId: string) => {
+    const result = await retryNotification(notifId, state.notifications, role);
+    if (!result) {
+      showToast('Notification could not be retried or was already sent.');
+      return;
+    }
+    const { updatedNotification, auditEntry } = result;
+    updateState((prev) => ({
+      ...prev,
+      notifications: prev.notifications.map((n) =>
+        n.id === updatedNotification.id ? updatedNotification : n
+      ),
+      auditLogs: [auditEntry, ...prev.auditLogs],
+    }));
+    showToast(`Notification retry completed: ${updatedNotification.status}.`);
+  };
+
+  const handleSaveNotificationSettings = (
+    recipients: ApproverRecipient[],
+    templates: Record<string, EditableNotificationTemplate>,
+    settings: NotificationSettings
+  ) => {
+    updateState((prev) => ({
+      ...prev,
+      approverRecipients: recipients,
+      emailTemplates: templates,
+      notificationSettings: settings,
+    }));
   };
 
   const handleSaveWhatIfVersion = (
@@ -569,6 +647,8 @@ export default function App() {
                   emiPlans={state.emiPlans}
                   role={role}
                   initialCustomerId={appCustomerId}
+                  approverRecipients={state.approverRecipients}
+                  isDemoMode={!isEmailConfigured()}
                   onSubmitApplication={handleSubmitApplication}
                   onSaveWhatIfVersion={handleSaveWhatIfVersion}
                   onToast={showToast}
@@ -639,7 +719,14 @@ export default function App() {
               )}
 
               {screen === 'notifications' && (
-                <NotificationsLog notifications={state.notifications} />
+                <NotificationsLog
+                  notifications={state.notifications}
+                  role={role}
+                  applications={state.applications}
+                  currentSubmitterEmail={localStorage.getItem('unitel_last_submitter_email') || ''}
+                  isDemoMode={!isEmailConfigured()}
+                  onRetry={handleRetryNotification}
+                />
               )}
 
               {screen === 'scoring_rules' && (
@@ -664,8 +751,12 @@ export default function App() {
 
               {screen === 'templates' && (
                 <NotificationTemplatesView
-                  config={state.config}
-                  onSaveConfig={handleSaveConfig}
+                  approverRecipients={state.approverRecipients}
+                  emailTemplates={state.emailTemplates}
+                  notificationSettings={state.notificationSettings}
+                  isDemoMode={!isEmailConfigured()}
+                  onSaveNotificationSettings={handleSaveNotificationSettings}
+                  onToast={showToast}
                 />
               )}
 

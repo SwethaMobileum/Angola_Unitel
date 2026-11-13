@@ -1,4 +1,11 @@
-import type { EmiPlanConfig, EquipmentItem, ScoringConfig } from './types';
+import type {
+  ApproverRecipient,
+  EditableNotificationTemplate,
+  EmiPlanConfig,
+  EquipmentItem,
+  NotificationSettings,
+  ScoringConfig,
+} from './types';
 
 export const UNITEL_MONEY_TIERS = {
   basic: {
@@ -254,3 +261,194 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
 export function cloneConfig(config: ScoringConfig): ScoringConfig {
   return JSON.parse(JSON.stringify(config)) as ScoringConfig;
 }
+
+export const DEFAULT_APPROVER_RECIPIENTS: ApproverRecipient[] = [
+  {
+    id: 'appr-1',
+    name: 'Unitel Risk Desk (Approver 1)',
+    email: 'approver1@unitel-demo.ao',
+    active: true,
+  },
+  {
+    id: 'appr-2',
+    name: 'Credit Ops Lead (Approver 2)',
+    email: 'approver2@unitel-demo.ao',
+    active: true,
+  },
+  {
+    id: 'appr-3',
+    name: 'Senior Approver (Backup)',
+    email: 'senior.approver@unitel-demo.ao',
+    active: false,
+  },
+];
+
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  notify_customer: false,
+};
+
+export const DEFAULT_EMAIL_TEMPLATES: Record<'submitted' | 'approved' | 'rejected' | 'more_info', EditableNotificationTemplate> = {
+  submitted: {
+    event_type: 'submitted',
+    version: 1,
+    subject: 'New credit application {{reference}} awaiting your approval',
+    body_text: `New credit application {{reference}} has been submitted and is awaiting your approval.
+
+Submitted By: {{submitted_by_name}} ({{submitted_by_email}})
+Submission Time: {{submitted_at}}
+
+Customer: {{customer_name}} ({{mobile_no}})
+Volume Tier: {{volume_tier}}
+Equipment: {{equipment}} ({{price}})
+EMI Plan: {{emi_term}} months • Monthly EMI: {{monthly_emi}}
+
+Scoring & Policy Evaluation:
+- Proxy Credit Score (demo): {{score}}
+- Score Band: {{band}}
+- Data Confidence: {{confidence}}
+- Policy Suggestion: {{suggestion}}
+
+Open in Approval Queue:
+{{link}}`,
+    body_html: `<div style="font-family: Arial, sans-serif; max-width: 600px; color: #1F2933; line-height: 1.5;">
+  <div style="background-color: #E86A00; color: #ffffff; padding: 16px 20px; border-radius: 8px 8px 0 0;">
+    <h2 style="margin: 0; font-size: 20px;">Unitel Credit Intelligence</h2>
+    <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">New Credit Application Awaiting Approval</p>
+  </div>
+  <div style="padding: 20px; border: 1px solid #E3E6EB; border-top: none; border-radius: 0 0 8px 8px; background-color: #ffffff;">
+    <p>Application <strong>{{reference}}</strong> has been submitted by <strong>{{submitted_by_name}}</strong> ({{submitted_by_email}}) on {{submitted_at}}.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">Customer:</td><td style="padding: 8px; font-weight: bold;">{{customer_name}} ({{mobile_no}})</td></tr>
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">Volume Tier:</td><td style="padding: 8px;">{{volume_tier}}</td></tr>
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">Equipment:</td><td style="padding: 8px;">{{equipment}} ({{price}})</td></tr>
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">EMI Plan:</td><td style="padding: 8px;">{{emi_term}} months @ {{monthly_emi}}/mo</td></tr>
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">Proxy Score:</td><td style="padding: 8px; font-weight: bold;">{{score}} ({{band}}) • Confidence: {{confidence}}</td></tr>
+      <tr><td style="padding: 8px; color: #616E7C;">System Suggestion:</td><td style="padding: 8px; font-weight: bold; color: #C2410C;">{{suggestion}}</td></tr>
+    </table>
+    <div style="margin-top: 24px; text-align: center;">
+      <a href="{{link}}" style="background-color: #FF7A00; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Open in Approval Queue</a>
+    </div>
+  </div>
+</div>`,
+  },
+  approved: {
+    event_type: 'approved',
+    version: 1,
+    subject: 'Your credit application {{reference}} was approved',
+    body_text: `Dear {{submitted_by_name}},
+
+Good news! Credit application {{reference}} for customer {{customer_name}} ({{mobile_no}}) has been APPROVED.
+
+Equipment: {{equipment}} ({{price}})
+Approved EMI Plan: {{emi_term}} months • Monthly EMI: {{monthly_emi}}
+Approved Credit Limit: {{credit_limit}}
+
+Decision Details:
+- Final Decision: APPROVED
+- Decided By: {{decided_by}}
+- Decision Timestamp: {{decided_at}}
+- Approver Reason: {{reason}}
+
+Next Steps:
+The customer may proceed with equipment collection after confirming their initial down payment.
+
+View Application:
+{{link}}`,
+    body_html: `<div style="font-family: Arial, sans-serif; max-width: 600px; color: #1F2933; line-height: 1.5;">
+  <div style="background-color: #10B981; color: #ffffff; padding: 16px 20px; border-radius: 8px 8px 0 0;">
+    <h2 style="margin: 0; font-size: 20px;">Unitel Credit Intelligence</h2>
+    <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Application Approved</p>
+  </div>
+  <div style="padding: 20px; border: 1px solid #E3E6EB; border-top: none; border-radius: 0 0 8px 8px; background-color: #ffffff;">
+    <p>Dear {{submitted_by_name}},</p>
+    <p>Good news! Application <strong>{{reference}}</strong> for <strong>{{customer_name}}</strong> has been <strong style="color: #10B981;">APPROVED</strong>.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">Equipment:</td><td style="padding: 8px;">{{equipment}} ({{price}})</td></tr>
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">Approved Limit:</td><td style="padding: 8px; font-weight: bold;">{{credit_limit}}</td></tr>
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">EMI Plan:</td><td style="padding: 8px;">{{emi_term}} months @ {{monthly_emi}}/mo</td></tr>
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">Decided By:</td><td style="padding: 8px;">{{decided_by}} on {{decided_at}}</td></tr>
+      <tr><td style="padding: 8px; color: #616E7C;">Approver Reason:</td><td style="padding: 8px; font-style: italic;">{{reason}}</td></tr>
+    </table>
+    <div style="margin-top: 24px; text-align: center;">
+      <a href="{{link}}" style="background-color: #FF7A00; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">View Application</a>
+    </div>
+  </div>
+</div>`,
+  },
+  rejected: {
+    event_type: 'rejected',
+    version: 1,
+    subject: 'Your credit application {{reference}} was rejected',
+    body_text: `Dear {{submitted_by_name}},
+
+Credit application {{reference}} for customer {{customer_name}} ({{mobile_no}}) was REJECTED.
+
+Equipment: {{equipment}} ({{price}})
+Requested EMI Plan: {{emi_term}} months • Monthly EMI: {{monthly_emi}}
+
+Decision Details:
+- Final Decision: REJECTED
+- Decided By: {{decided_by}}
+- Decision Timestamp: {{decided_at}}
+- Approver Reason: {{reason}}
+
+View Application:
+{{link}}`,
+    body_html: `<div style="font-family: Arial, sans-serif; max-width: 600px; color: #1F2933; line-height: 1.5;">
+  <div style="background-color: #EF4444; color: #ffffff; padding: 16px 20px; border-radius: 8px 8px 0 0;">
+    <h2 style="margin: 0; font-size: 20px;">Unitel Credit Intelligence</h2>
+    <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Application Rejected</p>
+  </div>
+  <div style="padding: 20px; border: 1px solid #E3E6EB; border-top: none; border-radius: 0 0 8px 8px; background-color: #ffffff;">
+    <p>Dear {{submitted_by_name}},</p>
+    <p>Credit application <strong>{{reference}}</strong> for <strong>{{customer_name}}</strong> has been <strong style="color: #EF4444;">REJECTED</strong>.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">Equipment:</td><td style="padding: 8px;">{{equipment}} ({{price}})</td></tr>
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">EMI Plan:</td><td style="padding: 8px;">{{emi_term}} months @ {{monthly_emi}}/mo</td></tr>
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">Decided By:</td><td style="padding: 8px;">{{decided_by}} on {{decided_at}}</td></tr>
+      <tr><td style="padding: 8px; color: #616E7C;">Approver Reason:</td><td style="padding: 8px; color: #EF4444;">{{reason}}</td></tr>
+    </table>
+    <div style="margin-top: 24px; text-align: center;">
+      <a href="{{link}}" style="background-color: #FF7A00; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">View Application</a>
+    </div>
+  </div>
+</div>`,
+  },
+  more_info: {
+    event_type: 'more_info',
+    version: 1,
+    subject: 'More information requested for credit application {{reference}}',
+    body_text: `Dear {{submitted_by_name}},
+
+The Credit Approver has requested additional information before finalizing application {{reference}} for customer {{customer_name}} ({{mobile_no}}).
+
+Equipment: {{equipment}} ({{price}})
+
+Approver Note / Required Details:
+{{reason}}
+
+Reviewer: {{decided_by}}
+Timestamp: {{decided_at}}
+
+Please update the application and re-submit:
+{{link}}`,
+    body_html: `<div style="font-family: Arial, sans-serif; max-width: 600px; color: #1F2933; line-height: 1.5;">
+  <div style="background-color: #F59E0B; color: #ffffff; padding: 16px 20px; border-radius: 8px 8px 0 0;">
+    <h2 style="margin: 0; font-size: 20px;">Unitel Credit Intelligence</h2>
+    <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">More Information Requested</p>
+  </div>
+  <div style="padding: 20px; border: 1px solid #E3E6EB; border-top: none; border-radius: 0 0 8px 8px; background-color: #ffffff;">
+    <p>Dear {{submitted_by_name}},</p>
+    <p>Additional details are required for application <strong>{{reference}}</strong> (Customer: <strong>{{customer_name}}</strong>).</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">Equipment:</td><td style="padding: 8px;">{{equipment}} ({{price}})</td></tr>
+      <tr style="border-bottom: 1px solid #E3E6EB;"><td style="padding: 8px; color: #616E7C;">Reviewer:</td><td style="padding: 8px;">{{decided_by}} on {{decided_at}}</td></tr>
+      <tr><td style="padding: 8px; color: #616E7C;">Approver Message:</td><td style="padding: 8px; font-weight: bold; color: #D97706;">{{reason}}</td></tr>
+    </table>
+    <div style="margin-top: 24px; text-align: center;">
+      <a href="{{link}}" style="background-color: #FF7A00; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Update Application</a>
+    </div>
+  </div>
+</div>`,
+  },
+};

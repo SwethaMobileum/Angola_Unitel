@@ -1,6 +1,9 @@
 import {
+  DEFAULT_APPROVER_RECIPIENTS,
+  DEFAULT_EMAIL_TEMPLATES,
   DEFAULT_EMI_PLANS,
   DEFAULT_EQUIPMENT_CATALOG,
+  DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_SCORING_CONFIG,
   calculateEmiPlan,
   evaluateCreditScore,
@@ -8,14 +11,17 @@ import {
 } from '../scoring';
 import type {
   ApplicationRecord,
+  ApproverRecipient,
   AuditLogEntry,
   Customer,
   CustomerProfile,
+  EditableNotificationTemplate,
   EmiPlanConfig,
   EquipmentItem,
   IdentitySource,
   MobileMoneySource,
   NotificationRecord,
+  NotificationSettings,
   ScoringConfig,
   TaxSource,
   TelecomSource,
@@ -33,6 +39,9 @@ export interface PortalState {
   applications: ApplicationRecord[];
   notifications: NotificationRecord[];
   auditLogs: AuditLogEntry[];
+  approverRecipients: ApproverRecipient[];
+  emailTemplates: Record<string, EditableNotificationTemplate>;
+  notificationSettings: NotificationSettings;
 }
 
 const STORAGE_KEY = 'unitel_credit_intelligence_poc_v2';
@@ -53,6 +62,9 @@ function buildInitialMockState(): PortalState {
     applications: seed.applications,
     notifications: seed.notifications,
     auditLogs: seed.auditLogs,
+    approverRecipients: DEFAULT_APPROVER_RECIPIENTS,
+    emailTemplates: DEFAULT_EMAIL_TEMPLATES,
+    notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
   };
 }
 
@@ -69,6 +81,14 @@ function loadLocalFallback(): PortalState {
           catalog: parsed.catalog?.length ? parsed.catalog : DEFAULT_EQUIPMENT_CATALOG,
           emiPlans: parsed.emiPlans?.length ? parsed.emiPlans : DEFAULT_EMI_PLANS,
           auditLogs: parsed.auditLogs ?? [],
+          approverRecipients:
+            parsed.approverRecipients?.length ? parsed.approverRecipients : DEFAULT_APPROVER_RECIPIENTS,
+          emailTemplates:
+            parsed.emailTemplates && Object.keys(parsed.emailTemplates).length > 0
+              ? parsed.emailTemplates
+              : DEFAULT_EMAIL_TEMPLATES,
+          notificationSettings:
+            parsed.notificationSettings ?? DEFAULT_NOTIFICATION_SETTINGS,
         };
       }
     }
@@ -159,6 +179,9 @@ export async function loadPortalState(): Promise<PortalState> {
       applications: (appRes.data as ApplicationRecord[] | null) ?? [],
       notifications: (notifRes.data as NotificationRecord[] | null) ?? [],
       auditLogs: (auditRes.data as AuditLogEntry[] | null) ?? [],
+      approverRecipients: DEFAULT_APPROVER_RECIPIENTS,
+      emailTemplates: DEFAULT_EMAIL_TEMPLATES,
+      notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
     };
   } catch {
     return loadLocalFallback();
