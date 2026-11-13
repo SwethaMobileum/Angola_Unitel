@@ -29,24 +29,34 @@
 - Restricted orange to top bar (`--brand-600`, darkened for >= 4.5:1 contrast with white text), sidebar active left bar & highlight (`--brand-500` / `--brand-50`), page/section headings (`--brand-700`), and primary buttons.
 - Converted KPI cards, forms, tables, charts, gauges, and icon status badges to neutral slate/gray ramps with zero hard-coded colors in TSX files.
 
-## Step 7 — Email Notifications for Application Submit and Decisions (2026-11-13)
-- **New Application Submitter & Customer Email Fields**: Added required `Your email (for notifications)` (`submitted_by_email`) with regex validation and helper text, required `Your name` (`submitted_by_name`), and optional `Customer email` (`customer_email`). Draft auto-saves to localStorage and remembers last typed values. Step 6 displays submitter email and approver notification notice. Result page displays notification dispatch banner with recipient list or demo mode status.
-- **Email 1 (Application Submitted)**: Dispatches email to all active approver addresses from the Admin approvers list containing application ref, submitter details, customer name/mobile, volume tier, equipment and price, EMI plan, proxy score, band, confidence, policy suggestion, and an "Open in Approval Queue" direct link.
-- **Email 2 (Application Approved / Rejected / More Info)**: Dispatches decision outcome email to `submitted_by_email` containing final decision, mandatory approver reason, credit limit (if approved), decided by role/name, and direct review link. Optionally sends a copy to `customer_email` if the Admin setting is enabled.
-- **Approver Decision Confirmation Modal**: Approval Queue and Application Detail screens present a confirmation modal showing `"An email will be sent to {submitted_by_email}"` before the Approver commits.
-- **Admin Governance (Admin > Notification Templates)**:
-  - Approver notification recipient list editor (add, remove, toggle active) with email format validation. Shows warning banner if 0 active approvers exist.
-  - Editable templates for `submitted`, `approved`, `rejected`, and `more_info` with placeholder interpolation (`{{reference}}`, `{{customer_name}}`, `{{equipment}}`, `{{price}}`, `{{emi_term}}`, `{{monthly_emi}}`, `{{score}}`, `{{band}}`, `{{confidence}}`, `{{decision}}`, `{{reason}}`, `{{decided_by}}`, `{{link}}`, `{{submitted_by_name}}`, `{{submitted_by_email}}`).
-  - Live preview with sample persona data and "Send test email" button sending strictly to the Admin-entered address.
-  - Toggle: "Also email the customer" (default off).
-  - "Reset to default" button for instant restoration.
-- **Pluggable Sending Layer & Resilient Demo Mode**:
-  - Implemented `src/lib/emailService.ts` and `supabase/functions/send-notification/` (Edge Function supporting Resend / SMTP).
-  - Secrets kept in server-side environment variables; documented in `.env.example`.
-  - Non-blocking execution: email transport failures never block submission or approver decision.
-  - Safe Demo Mode fallback (`Not sent (demo mode)`) when email credentials are not set, with Admin status banner.
-  - Deduplication prevents re-sending if an email was already delivered. Admin "Retry" button available on failed notifications.
-- **Database Schema**: Added `supabase/migrations/003_email_notifications.sql` with migrations for `applications`, `approver_recipients`, `notification_templates`, `notifications`, and `settings`.
-- **Testing**: Added Vitest test suite (`src/scoring/__tests__/notifications.test.ts`) covering template interpolation, active approver filtering, decision routing, customer toggle, and error handling. All 17 unit tests pass.
+## Step 8 — Real Email Dispatch via Express/Nodemailer & Simplified Clean Flow (2026-11-13)
+- **Root Cause Resolution**:
+  - Identified that the Vite SPA was running completely in-browser without an active SMTP server runtime, default demo mode was silently swallowing emails, and `.env` was missing.
+  - Implemented real Express + Nodemailer backend server (`server/index.ts`) running on `localhost:3001` with endpoints:
+    - `GET /api/health`: Health & live SMTP connection status.
+    - `POST /api/send-email`: Real RFC 5322 email transmission with deduplication (`applicationId:eventType:recipient`).
+    - `POST /api/send-test-email`: Dedicated test verification endpoint.
+  - Configured Vite reverse proxy in `vite.config.ts` (`/api` -> `http://localhost:3001`).
+  - Updated `package.json` with `"dev": "concurrently -k -n \"server,client\" -c \"blue,magenta\" \"npm run server\" \"npm run client\""`.
+- **Simplified Two-Step Flow Only**:
+  - **Admin > Approver Email** (`src/components/ApproverEmailAdmin.tsx`): Clean, simple form to manage Approver recipients (Name, Email, Save) with active approver listing, SMTP server connection badge, and a real "Send Test Email" tool.
+  - **Analyst > New Application**: Single required notification field "Your email (for notifications)" (and "Your name"), auto-saved and validated. Removed customer email input.
+  - **Submit Trigger (Email 1)**: Approver(s) set in Admin immediately receive a real email: *"New credit application CR-XXXX awaiting your approval"* with loan summary and direct link to the Approval Queue. Clean confirmation screen: *"Waiting for approval — An email was sent to {approver email}"*.
+  - **Decision Trigger (Email 2)**: Approver clicks Approve or Reject (reason required). The applicant (`submitted_by_email`) immediately receives a real email: *"Your credit application CR-XXXX was approved"* (or *"rejected"*) with approver reason, credit limit (if approved), and link. Clean confirmation screen: *"Decision saved. An email was sent to {applicant email}"*.
+- **Removed Email Clutter**:
+  - Removed "not sent (demo mode)" banners.
+  - Removed customer email field and customer email toggles.
+  - Removed "application received" auto-response.
+  - Replaced editable template editor with two clean, robust HTML/plain-text code templates (`src/scoring/notifications.ts`).
+  - Removed complex retry mechanisms; errors are displayed with real SMTP error messages without blocking loan application storage.
+- **Tidy Navigation**:
+  - Analyst: Dashboard, New Application, My Applications.
+  - Approver: Approval Queue, All Applications.
+  - Admin: Dashboard, All Applications, Approver Email, Scoring Rules.
+  - Simplified Notifications Log (`src/components/NotificationsLog.tsx`): Clean table showing Date & Time, Recipient, Subject, and Status (`SENT` / `FAILED`).
+- **Tests & Verification**:
+  - 25 unit and acceptance tests passing (`acceptance.test.ts`, `notifications.test.ts`, `engine.test.ts`).
+  - TypeScript production build passed with 0 errors.
+
 
 

@@ -55,3 +55,4 @@ CREATE TABLE IF NOT EXISTS settings (
 INSERT INTO settings (key, value)
 VALUES ('notifications', '{"notify_customer": false}'::jsonb)
 ON CONFLICT (key) DO NOTHING;
+

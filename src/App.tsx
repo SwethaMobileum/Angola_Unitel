@@ -1,26 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  DEFAULT_EMAIL_TEMPLATES,
   DEFAULT_SCORING_CONFIG,
-  buildApplicationSubmittedEmails,
-  buildDecisionEmails,
-  buildNotificationDrafts,
+  buildApproverEmail,
+  buildDecisionEmail,
   calculateEmiPlan,
   cloneConfig,
+  createNotificationRecord,
   evaluateCreditScore,
   evaluateLimitAndDecision,
 } from './scoring';
 import type {
   ApplicationRecord,
   ApplicationStatus,
-  ApproverRecipient,
   AuditLogEntry,
   CustomerProfile,
-  EditableNotificationTemplate,
   EmiPlanConfig,
   EquipmentItem,
   NotificationRecord,
-  NotificationSettings,
   Role,
   ScoringConfig,
 } from './scoring';
@@ -35,7 +31,7 @@ import {
   saveLocalFallback,
   type PortalState,
 } from './lib/dataService';
-import { isEmailConfigured, retryNotification, sendNotificationBatch } from './lib/emailService';
+import { sendRealEmail } from './lib/emailService';
 import { ChooseRoleScreen } from './components/ChooseRoleScreen';
 import { Dashboard } from './components/Dashboard';
 import { NewApplication } from './components/NewApplication';
@@ -46,7 +42,7 @@ import { ApprovalsQueue } from './components/ApprovalsQueue';
 import { NotificationsLog } from './components/NotificationsLog';
 import { AdminConfig } from './components/AdminConfig';
 import { CatalogAndEmiAdmin } from './components/CatalogAndEmiAdmin';
-import { NotificationTemplatesView } from './components/NotificationTemplatesView';
+import { ApproverEmailAdmin } from './components/ApproverEmailAdmin';
 import { UsersAndRolesView } from './components/UsersAndRolesView';
 import { AuditLogView } from './components/AuditLogView';
 import { DataToolsView } from './components/DataToolsView';
@@ -62,7 +58,7 @@ type Screen =
   | 'notifications'
   | 'scoring_rules'
   | 'catalog_emi'
-  | 'templates'
+  | 'approver_email'
   | 'users_roles'
   | 'audit_log'
   | 'data_tools';
@@ -77,7 +73,7 @@ const ROLE_LANDING: Record<Role, Screen> = {
 
 const ROLE_ALLOWED_SCREENS: Record<Role, Screen[]> = {
   analyst: ['dashboard', 'new_application', 'my_applications', 'application_detail', 'customers'],
-  approver: ['dashboard', 'approvals', 'all_applications', 'application_detail', 'notifications'],
+  approver: ['approvals', 'all_applications', 'application_detail'],
   admin: [
     'dashboard',
     'new_application',
@@ -88,7 +84,7 @@ const ROLE_ALLOWED_SCREENS: Record<Role, Screen[]> = {
     'notifications',
     'scoring_rules',
     'catalog_emi',
-    'templates',
+    'approver_email',
     'users_roles',
     'audit_log',
     'data_tools',
@@ -179,23 +175,39 @@ export default function App() {
     newOrUpdatedProfile: CustomerProfile,
     auditEntries: AuditLogEntry[]
   ) => {
-    // 1. Build and dispatch Email 1 to active approvers
-    const submittedTemplate =
-      state.emailTemplates?.submitted ?? DEFAULT_EMAIL_TEMPLATES.submitted;
-    const submittedEmails = buildApplicationSubmittedEmails(
-      app,
-      state.approverRecipients,
-      submittedTemplate,
-      window.location.origin
-    );
+    // 1. Build Email 1 for Approver(s)
+    const activeApprovers = state.approverRecipients.filter((a) => a.active);
+    const approverEmails = activeApprovers.map((a) => a.email);
+    const { subject, text, html } = buildApproverEmail(app, window.location.origin);
 
-    // 2. Dispatch emails asynchronously (never blocks application creation)
-    const { updatedNotifications, auditEntries: notifAudits } =
-      await sendNotificationBatch(submittedEmails, state.notifications, role);
+    // 2. Dispatch real email via backend (never blocks application submission)
+    let emailStatus: 'sent' | 'failed' = 'sent';
+    let emailError: string | undefined;
 
-    // Also build legacy draft for backward compatibility
-    const legacyNotifs = buildNotificationDrafts(app, 'received', state.config, app.created_at);
-    const combinedNotifs = [...updatedNotifications, ...legacyNotifs];
+    if (approverEmails.length > 0) {
+      const res = await sendRealEmail({
+        to: approverEmails,
+        subject,
+        text,
+        html,
+        applicationId: app.id,
+        eventType: 'submitted',
+      });
+      if (!res.success) {
+        emailStatus = 'failed';
+        emailError = res.error;
+        showToast(`Email notice failed: ${res.error}`);
+      }
+    } else {
+      emailStatus = 'failed';
+      emailError = 'No active approvers configured in Admin > Approver Email';
+      showToast('Warning: No approver email configured in Admin.');
+    }
+
+    // 3. Record in notifications log
+    const notifRecords: NotificationRecord[] = (
+      approverEmails.length > 0 ? approverEmails : ['approver@unitel-demo.ao']
+    ).map((em) => createNotificationRecord(app.id, em, subject, emailStatus, emailError));
 
     updateState((prev) => {
       const exists = prev.profiles.some(
@@ -211,13 +223,13 @@ export default function App() {
         ...prev,
         profiles: nextProfiles,
         applications: [app, ...prev.applications.filter((a) => a.id !== app.id)],
-        notifications: [...combinedNotifs, ...prev.notifications],
-        auditLogs: [...notifAudits, ...auditEntries.reverse(), ...prev.auditLogs],
+        notifications: [...notifRecords, ...prev.notifications],
+        auditLogs: [...auditEntries.reverse(), ...prev.auditLogs],
       };
     });
     void persistProfileUpdate(newOrUpdatedProfile);
-    void persistApplication(app, combinedNotifs, auditEntries[auditEntries.length - 1]);
-    showToast(`Application ${app.id} submitted to Approver queue.`);
+    void persistApplication(app, notifRecords, auditEntries[auditEntries.length - 1]);
+    showToast(`Application ${app.id} submitted.`);
   };
 
   const handleApproverDecision = async (
@@ -237,41 +249,41 @@ export default function App() {
       overridden_by: role,
     };
 
-    // 1. Determine template and build Email 2 (to submitter and optionally customer)
-    const templateKey =
-      status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : 'more_info';
-    const emailTemplate =
-      state.emailTemplates?.[templateKey] ?? DEFAULT_EMAIL_TEMPLATES[templateKey];
+    // 1. Build and send Decision Email 2 to applicant (submitted_by_email)
+    const applicantEmail = updated.submitted_by_email;
+    let emailStatus: 'sent' | 'failed' = 'sent';
+    let emailError: string | undefined;
+    let notifRecord: NotificationRecord | null = null;
 
-    const decisionEmails = buildDecisionEmails(
-      updated,
-      status,
-      reason,
-      role,
-      role === 'approver' ? 'Credit Approver Silva' : 'Admin User',
-      emailTemplate,
-      state.notificationSettings?.notify_customer ?? false,
-      window.location.origin
-    );
+    if (applicantEmail) {
+      const { subject, text, html } = buildDecisionEmail(
+        updated,
+        status,
+        reason,
+        window.location.origin
+      );
 
-    // 2. Dispatch decision emails asynchronously (never blocks decision)
-    const { updatedNotifications, auditEntries: notifAudits } =
-      await sendNotificationBatch(decisionEmails, state.notifications, role);
+      const res = await sendRealEmail({
+        to: applicantEmail,
+        subject,
+        text,
+        html,
+        applicationId: updated.id,
+        eventType: status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : undefined,
+      });
 
-    const trigger =
-      status === 'approved'
-        ? 'auto_approve'
-        : status === 'rejected'
-          ? 'decline'
-          : 'more_info_requested';
-
-    const legacyNotifs: NotificationRecord[] = buildNotificationDrafts(
-      updated,
-      trigger,
-      state.config,
-      now
-    );
-    const combinedNotifs = [...updatedNotifications, ...legacyNotifs];
+      if (!res.success) {
+        emailStatus = 'failed';
+        emailError = res.error;
+        showToast(`Email to applicant failed: ${res.error}`);
+      } else {
+        showToast(`Decision email sent to ${applicantEmail}`);
+      }
+      notifRecord = createNotificationRecord(updated.id, applicantEmail, subject, emailStatus, emailError);
+    } else {
+      emailStatus = 'failed';
+      emailError = 'No applicant email on file';
+    }
 
     const audit: AuditLogEntry = {
       id: `audit-${appId}-${Date.now()}`,
@@ -281,7 +293,6 @@ export default function App() {
         previous_status: target.status,
         suggested_decision: target.decision,
         submitted_by_email: updated.submitted_by_email,
-        customer_email: updated.customer_email,
       },
       score_config_version: target.score_config_version ?? state.config.version,
       score: target.score,
@@ -291,44 +302,16 @@ export default function App() {
       timestamp: now,
     };
 
+    const newNotifs = notifRecord ? [notifRecord] : [];
+
     updateState((prev) => ({
       ...prev,
       applications: prev.applications.map((a) => (a.id === appId ? updated : a)),
-      notifications: [...combinedNotifs, ...prev.notifications],
-      auditLogs: [...notifAudits, audit, ...prev.auditLogs],
+      notifications: [...newNotifs, ...prev.notifications],
+      auditLogs: [audit, ...prev.auditLogs],
     }));
-    void persistApplication(updated, combinedNotifs, audit);
-    showToast(`Application ${appId} marked as ${status.replace(/_/g, ' ')}. Email notification dispatched.`);
-  };
-
-  const handleRetryNotification = async (notifId: string) => {
-    const result = await retryNotification(notifId, state.notifications, role);
-    if (!result) {
-      showToast('Notification could not be retried or was already sent.');
-      return;
-    }
-    const { updatedNotification, auditEntry } = result;
-    updateState((prev) => ({
-      ...prev,
-      notifications: prev.notifications.map((n) =>
-        n.id === updatedNotification.id ? updatedNotification : n
-      ),
-      auditLogs: [auditEntry, ...prev.auditLogs],
-    }));
-    showToast(`Notification retry completed: ${updatedNotification.status}.`);
-  };
-
-  const handleSaveNotificationSettings = (
-    recipients: ApproverRecipient[],
-    templates: Record<string, EditableNotificationTemplate>,
-    settings: NotificationSettings
-  ) => {
-    updateState((prev) => ({
-      ...prev,
-      approverRecipients: recipients,
-      emailTemplates: templates,
-      notificationSettings: settings,
-    }));
+    void persistApplication(updated, newNotifs, audit);
+    showToast(`Decision saved for ${appId}.`);
   };
 
   const handleSaveWhatIfVersion = (
@@ -499,25 +482,17 @@ export default function App() {
           { id: 'dashboard', label: 'Dashboard' },
           { id: 'new_application', label: 'New Application' },
           { id: 'my_applications', label: 'My Applications', badge: state.applications.length },
-          { id: 'customers', label: 'Customers', badge: state.profiles.length },
         ]
       : role === 'approver'
         ? [
-            { id: 'dashboard', label: 'Dashboard' },
             { id: 'approvals', label: 'Approval Queue', badge: pendingReviewCount },
             { id: 'all_applications', label: 'All Applications', badge: state.applications.length },
-            { id: 'notifications', label: 'Notifications', badge: state.notifications.length },
           ]
         : [
             { id: 'dashboard', label: 'Dashboard' },
             { id: 'all_applications', label: 'All Applications', badge: state.applications.length },
-            { id: 'new_application', label: 'New Application' },
+            { id: 'approver_email', label: 'Approver Email' },
             { id: 'scoring_rules', label: 'Scoring Rules', badge: `v${state.config.version}` },
-            { id: 'catalog_emi', label: 'Catalog & EMI Plans' },
-            { id: 'templates', label: 'Notification Templates' },
-            { id: 'users_roles', label: 'Users & Roles' },
-            { id: 'audit_log', label: 'Audit Log', badge: state.auditLogs.length },
-            { id: 'data_tools', label: 'Data Tools' },
           ];
 
   const activeDetailApp =
@@ -648,10 +623,10 @@ export default function App() {
                   role={role}
                   initialCustomerId={appCustomerId}
                   approverRecipients={state.approverRecipients}
-                  isDemoMode={!isEmailConfigured()}
                   onSubmitApplication={handleSubmitApplication}
                   onSaveWhatIfVersion={handleSaveWhatIfVersion}
                   onToast={showToast}
+                  onNavigate={(scr) => setScreen(scr as Screen)}
                 />
               )}
 
@@ -719,13 +694,16 @@ export default function App() {
               )}
 
               {screen === 'notifications' && (
-                <NotificationsLog
-                  notifications={state.notifications}
-                  role={role}
-                  applications={state.applications}
-                  currentSubmitterEmail={localStorage.getItem('unitel_last_submitter_email') || ''}
-                  isDemoMode={!isEmailConfigured()}
-                  onRetry={handleRetryNotification}
+                <NotificationsLog notifications={state.notifications} />
+              )}
+
+              {screen === 'approver_email' && (
+                <ApproverEmailAdmin
+                  approverRecipients={state.approverRecipients}
+                  onSaveApprovers={(recs) =>
+                    updateState((prev) => ({ ...prev, approverRecipients: recs }))
+                  }
+                  onToast={showToast}
                 />
               )}
 
@@ -746,17 +724,6 @@ export default function App() {
                   catalog={state.catalog}
                   emiPlans={state.emiPlans}
                   onSaveCatalogAndEmi={handleSaveCatalogAndEmi}
-                />
-              )}
-
-              {screen === 'templates' && (
-                <NotificationTemplatesView
-                  approverRecipients={state.approverRecipients}
-                  emailTemplates={state.emailTemplates}
-                  notificationSettings={state.notificationSettings}
-                  isDemoMode={!isEmailConfigured()}
-                  onSaveNotificationSettings={handleSaveNotificationSettings}
-                  onToast={showToast}
                 />
               )}
 

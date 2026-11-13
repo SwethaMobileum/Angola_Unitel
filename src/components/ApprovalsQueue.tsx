@@ -52,6 +52,12 @@ export function ApprovalsQueue({
     reason: string;
   } | null>(null);
 
+  const [decisionConfirmation, setDecisionConfirmation] = useState<{
+    appId: string;
+    email: string;
+    status: string;
+  } | null>(null);
+
   const handleAction = (
     appId: string,
     status: Extract<ApplicationStatus, 'approved' | 'rejected' | 'more_info_requested'>
@@ -77,6 +83,52 @@ export function ApprovalsQueue({
       onDecision(appId, status, reason);
     }
   };
+
+  if (decisionConfirmation) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div
+          className="card"
+          style={{
+            padding: '40px 24px',
+            textAlign: 'center',
+            maxWidth: 580,
+            margin: '24px auto',
+            width: '100%',
+          }}
+        >
+          <div style={{ fontSize: 52, marginBottom: 16 }}>
+            {decisionConfirmation.status === 'approved' ? '✅' : '📋'}
+          </div>
+          <h2 className="page-title" style={{ marginBottom: 8 }}>
+            Decision Saved
+          </h2>
+          <div style={{ fontSize: 16, color: 'var(--text)', marginBottom: 16 }}>
+            Application: <strong>{decisionConfirmation.appId}</strong>
+          </div>
+          <p
+            style={{
+              color: 'var(--text-muted)',
+              fontSize: 15,
+              marginBottom: 28,
+              lineHeight: 1.5,
+            }}
+          >
+            Decision saved. An email was sent to <strong>{decisionConfirmation.email}</strong>
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setDecisionConfirmation(null)}
+            >
+              Back to Approval Queue
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -316,8 +368,16 @@ export function ApprovalsQueue({
                 type="button"
                 className="btn btn-primary"
                 onClick={() => {
-                  onDecision(confirmDialog.app.id, confirmDialog.status, confirmDialog.reason);
+                  const targetId = confirmDialog.app.id;
+                  const targetStatus = confirmDialog.status;
+                  const targetEmail = confirmDialog.app.submitted_by_email || 'the applicant';
+                  onDecision(targetId, targetStatus, confirmDialog.reason);
                   setConfirmDialog(null);
+                  setDecisionConfirmation({
+                    appId: targetId,
+                    email: targetEmail,
+                    status: targetStatus,
+                  });
                 }}
               >
                 Confirm &amp; Send Email Notification

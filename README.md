@@ -33,51 +33,72 @@ npm run build
 npm run dev
 ```
 
+`npm run dev` concurrently starts:
+- **Express + Nodemailer Backend** on `http://localhost:3001`
+- **Vite Client** on `http://localhost:5173` (automatically proxying `/api` requests to port 3001)
+
 Open `http://localhost:5173`. When `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are omitted, the portal automatically runs against the 300-subscriber local mock dataset persisted in `localStorage`.
 
 ---
 
-## Optional: Connecting Supabase Postgres & Real Email Dispatch
+## Configuring Real Email Sending (SMTP)
 
-1. Copy `.env.example` to `.env` and configure:
-   - Supabase keys (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`)
-   - Email provider credentials (`EMAIL_PROVIDER=resend`, `EMAIL_API_KEY=re_...`, `EMAIL_FROM="Unitel Credit <credit@unitel.ao>"`, `APP_BASE_URL=http://localhost:5173`)
-2. Run SQL migrations in order:
-   - `supabase/migrations/001_init.sql`
-   - `supabase/migrations/002_workflow_emi_audit.sql`
-   - `supabase/migrations/003_email_notifications.sql`
-3. Deploy the Edge Function (or test locally with Supabase CLI):
-   ```bash
-   supabase functions deploy send-notification
+Real emails are dispatched via the built-in Node.js / Express backend server using Nodemailer.
+
+1. Open `.env` in the project root (created from `.env.example`).
+2. Fill in your SMTP credentials:
+   ```ini
+   PORT=3001
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USER=your-email@gmail.com
+   SMTP_PASS=your-google-app-password
+   EMAIL_FROM="Unitel Credit Intelligence <your-email@gmail.com>"
+   APP_BASE_URL=http://localhost:5173
    ```
-4. When credentials are not configured, the app runs in **Demo Mode**:
-   - Outgoing notifications are logged as `Not sent (demo mode)`.
-   - The Admin dashboard displays an informational "Email is in demo mode" banner.
-   - All application submissions, approver reviews, decisions, and audit trails continue functioning seamlessly.
+   > **Tip for Gmail:** Use a 16-character [Google App Password](https://myaccount.google.com/apppasswords) (generate under Google Account > Security > 2-Step Verification > App Passwords).
+
+3. Start or restart `npm run dev`. The terminal will verify SMTP credentials on startup:
+   ```
+   [SMTP CONNECTED] Verified connection to smtp.gmail.com:587
+   [EMAIL SERVER] Express + Nodemailer server running on http://localhost:3001
+   ```
+4. Test delivery immediately from **Admin > Approver Email > Send Test Email**.
 
 ---
 
-## Acceptance Test Verification
+## The Clean & Simple Flow
 
-1. **New Application Email Validation**:
-   - As **Analyst**, open **New Application**. Step 1 requires `Your email (for notifications)` and validates valid email format.
-   - Enter your email address (e.g. `analyst@test.com`), complete steps 1–6, and submit.
-2. **Email 1 (Submitted) Delivery**:
-   - A notification record is created for each active approver in the list with status `sent` (or `demo` if credentials are missing).
-   - Contains application reference, customer details, volume tier, equipment price, EMI plan, proxy score, and direct queue link.
-3. **Approver Decision Dialog & Email 2 (Approved)**:
-   - Switch role to **Approver**: the new application appears in the Approval Queue.
-   - Click **✓ Approve**: a confirmation dialog confirms that *"An email will be sent to analyst@test.com"*.
-   - Confirm with a reason: an email goes strictly to the analyst submitter containing the decision, approver reason, and approved credit limit.
-4. **Rejection Outcome**:
-   - Submit another application and reject it with a reason: the rejection email is dispatched to the submitting analyst.
-5. **Admin Notification Settings**:
-   - Switch to **Admin > Notification Templates**:
-   - Edit template text, view the live preview with sample customer data, and send a test email to your own address.
-   - Deactivate an approver and confirm subsequent submissions route only to active approver addresses.
-   - Toggle *"Also email the customer"* to test optional customer copying.
-6. **Resilience & Retry**:
-   - If email transport fails, application actions still succeed, saving notifications with status `failed` and the recorded error.
+1. **Admin > Approver Email**:
+   - Add/manage approver email addresses (Name, Email, Save).
+   - Shows active approver recipients, live SMTP server connection status, and a "Send test email" button.
+
+2. **Analyst > New Application**:
+   - Fill the 6-step form.
+   - Requires **"Your email (for notifications)"** (and "Your name"). Validated and auto-saved.
+   - On **Submit**: Approver(s) set in Admin immediately receive a real email:
+     `"New credit application CR-XXXX awaiting your approval"` with equipment, price, EMI plan, score, and link.
+   - Analyst sees a clean confirmation screen:
+     `Waiting for approval — An email was sent to {approver email}` with options to *"View My Applications"* or *"Create another"*.
+
+3. **Approver > Approval Queue**:
+   - Approver clicks **Approve** or **Reject** (mandatory reason required).
+   - Applicant (`submitted_by_email`) immediately receives a real email:
+     `"Your credit application CR-XXXX was approved"` (with credit limit, reason, and link) or `"was rejected"`.
+   - Approver sees a clean confirmation screen:
+     `Decision saved. An email was sent to {applicant email}` with a button to return to the queue.
+
+4. **Notifications Log**:
+   - Simple, clean table showing Date & Time, Recipient, Subject, and Status (`SENT` / `FAILED`).
+   - If SMTP is not yet configured or credentials fail, the real error message is shown clearly on screen and in logs without interrupting or rolling back the loan application.
+
+---
+
+## Tidy Role Navigation
+
+- **Analyst**: Dashboard, New Application, My Applications.
+- **Approver**: Approval Queue, All Applications.
+- **Admin**: Dashboard, All Applications, Approver Email, Scoring Rules.
    - Admin can click **Retry** in the Notifications Log to retry failed items without duplicate sends.
 7. **Audit Log Verification**:
    - Every notification event (creation, send, failure, retry) is recorded with timestamps, roles, and inputs in the **Audit Log**.

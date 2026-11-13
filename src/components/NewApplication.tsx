@@ -26,13 +26,10 @@ import type {
 import {
   BandBadge,
   ConfidenceBadge,
-  StatusBadge,
   SuggestedDecisionBadge,
   SourceStatusBadge,
   VolumeTierBadge,
 } from './Badges';
-import { ScoreExplanationView } from './ScoreExplanationView';
-import { WhatIfPanel } from './WhatIfPanel';
 
 interface NewApplicationProps {
   profiles: CustomerProfile[];
@@ -42,7 +39,6 @@ interface NewApplicationProps {
   role: Role;
   initialCustomerId?: string;
   approverRecipients?: ApproverRecipient[];
-  isDemoMode?: boolean;
   onSubmitApplication: (
     app: ApplicationRecord,
     newOrUpdatedProfile: CustomerProfile,
@@ -50,6 +46,8 @@ interface NewApplicationProps {
   ) => void;
   onSaveWhatIfVersion: (sourceApp: ApplicationRecord, updatedProfile: CustomerProfile) => void;
   onToast: (msg: string) => void;
+  onNavigate?: (screen: string) => void;
+  isDemoMode?: boolean;
 }
 
 const DRAFT_STORAGE_KEY = 'unitel_ci_app_draft_v1';
@@ -68,10 +66,9 @@ const LAST_SUBMITTER_NAME_KEY = 'unitel_last_submitter_name';
 
 interface DraftState {
   step: number;
-  // Submitter & Customer Emails
+  // Submitter (Applicant) Details
   submittedByName: string;
   submittedByEmail: string;
-  customerEmail: string;
   // Step 1 Customer Fields
   fullName: string;
   mobileNo: string;
@@ -138,7 +135,6 @@ function createEmptyDraft(catalog: EquipmentItem[], emiPlans: EmiPlanConfig[]): 
     step: 0,
     submittedByName: rememberedName,
     submittedByEmail: rememberedEmail,
-    customerEmail: '',
     fullName: '',
     mobileNo: '+244 923 ',
     biNumber: '',
@@ -202,10 +198,10 @@ export function NewApplication({
   role,
   initialCustomerId,
   approverRecipients = [],
-  isDemoMode = true,
   onSubmitApplication,
-  onSaveWhatIfVersion,
+  onSaveWhatIfVersion: _onSaveWhatIfVersion,
   onToast,
+  onNavigate,
 }: NewApplicationProps) {
   const [draft, setDraft] = useState<DraftState>(() => {
     try {
@@ -456,10 +452,6 @@ export function NewApplication({
         errors.submittedByName = 'Your name is required.';
       }
 
-      if (draft.customerEmail.trim() && !emailRegex.test(draft.customerEmail.trim())) {
-        errors.customerEmail = 'Please enter a valid customer email address or leave blank.';
-      }
-
       if (!draft.fullName.trim()) errors.fullName = 'Full name is required.';
       if (!isValidUnitelMobile(draft.mobileNo)) {
         errors.mobileNo = 'Enter a valid Unitel Angola number (+244 9XX XXX XXX).';
@@ -589,7 +581,6 @@ export function NewApplication({
       profile_snapshot: liveProfile,
       submitted_by_name: draft.submittedByName.trim(),
       submitted_by_email: draft.submittedByEmail.trim(),
-      customer_email: draft.customerEmail.trim() || undefined,
       created_at: now,
     };
 
@@ -675,129 +666,82 @@ export function NewApplication({
     onToast('Draft cleared.');
   };
 
-  // Result Page after Submit
+  // Result Page after Submit (Clean confirmation per spec)
   if (submittedResult) {
-    const { app, profile } = submittedResult;
-    const exp = evaluateCreditScore(profile, config);
-    const dec = evaluateLimitAndDecision(exp, app.product_price_aoa, config, app.monthly_emi_aoa);
+    const { app } = submittedResult;
+    const activeApprovers = approverRecipients.filter((a) => a.active);
+    const approverEmailsStr =
+      activeApprovers.length > 0
+        ? activeApprovers.map((a) => a.email).join(', ')
+        : 'the Approver';
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-        <div className="page-header">
-          <div>
-            <h2 className="page-title">Application Submitted — {app.id}</h2>
-            <p className="page-subtitle">
-              Saved and routed to the Approver queue. Policy suggestion:{' '}
-              <strong>{dec.decisionLabel}</strong>.
-            </p>
+        <div
+          className="card"
+          style={{
+            padding: '40px 24px',
+            textAlign: 'center',
+            maxWidth: 580,
+            margin: '24px auto',
+            width: '100%',
+          }}
+        >
+          <div style={{ fontSize: 52, marginBottom: 16 }}>📬</div>
+          <h2 className="page-title" style={{ marginBottom: 8 }}>
+            Application Submitted
+          </h2>
+          <div style={{ fontSize: 16, color: 'var(--text)', marginBottom: 16 }}>
+            Reference: <strong>{app.id}</strong>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <StatusBadge status={app.status} />
-            <button type="button" className="btn btn-primary" onClick={handleClearDraft}>
-              + Start Another Application
-            </button>
-          </div>
-        </div>
-
-        {exp.thinFileNotice && (
-          <div className="alert-box">
-            <strong>Thin-File Explanation:</strong> {exp.thinFileNotice}
-          </div>
-        )}
-
-        {/* Email Notification Dispatch Summary */}
-        {(() => {
-          const activeApprovers = approverRecipients.filter((a) => a.active);
-          return (
-            <div
-              className="card-tinted"
+          <div style={{ marginBottom: 16 }}>
+            <span
+              className="badge"
               style={{
-                borderLeft: '4px solid var(--brand-500)',
-                padding: '12px 16px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 4,
+                background: 'var(--brand-50)',
+                color: 'var(--brand-700)',
+                border: '1px solid var(--brand-500)',
+                fontSize: 14,
+                padding: '6px 14px',
+                fontWeight: 600,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <strong style={{ color: 'var(--brand-700)' }}>Email Notification:</strong>
-                {isDemoMode ? (
-                  <span className="badge band-fair">Email is in demo mode</span>
-                ) : (
-                  <span className="badge band-good">Approvers have been notified</span>
-                )}
-              </div>
-              <div style={{ fontSize: 13 }}>
-                {isDemoMode ? (
-                  <span>
-                    Email credentials are not configured. Approver notifications recorded as <em>Not sent (demo mode)</em> in the log.
-                  </span>
-                ) : (
-                  <span>
-                    Sent to {activeApprovers.length} active approver(s):{' '}
-                    <strong>{activeApprovers.map((a) => a.email).join(', ') || 'None configured'}</strong>
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-                Decision outcome will be emailed to Analyst: <strong>{app.submitted_by_email}</strong>.
-              </div>
-            </div>
-          );
-        })()}
-
-        <div className="grid-4">
-          <div className="card">
-            <div className="kpi-label">Proxy Credit Score (Demo)</div>
-            <div className="kpi-value">{exp.score}</div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-              <BandBadge band={exp.band} />
-              <ConfidenceBadge confidence={exp.confidence} />
-            </div>
+              Waiting for approval
+            </span>
           </div>
-          <div className="card">
-            <div className="kpi-label">Credit Limit vs Price</div>
-            <div className="kpi-value" style={{ fontSize: 22 }}>{formatAoa(dec.creditLimitAoa)}</div>
-            <div className="kpi-meta">
-              Equipment: {formatAoa(app.product_price_aoa)} ({dec.headroomAoa >= 0 ? 'Within limit' : 'Above limit'})
-            </div>
-          </div>
-          <div className="card">
-            <div className="kpi-label">EMI Affordability</div>
-            <div className="kpi-value" style={{ fontSize: 22 }}>{formatAoa(app.monthly_emi_aoa)}/mo</div>
-            <div className="kpi-meta">
-              Cap: {formatAoa(dec.maxMonthlyEmiAoa)}/mo •{' '}
-              <strong>{dec.emiAffordable ? '✓ Affordable' : '✕ Over monthly cap'}</strong>
-            </div>
-          </div>
-          <div className="card">
-            <div className="kpi-label">Policy Suggestion</div>
-            <div style={{ marginTop: 10 }}>
-              <SuggestedDecisionBadge decision={dec.decision} />
-            </div>
-            <div className="kpi-meta" style={{ marginTop: 8 }}>{dec.decisionReason}</div>
-          </div>
-        </div>
-
-        <ScoreExplanationView profile={profile} explanation={exp} />
-
-        <WhatIfPanel
-          profile={profile}
-          config={config}
-          productName={app.product}
-          productPriceAoa={app.product_price_aoa}
-          monthlyEmiAoa={app.monthly_emi_aoa}
-          onProfileDraftChange={(nextP) => {
-            setSubmittedResult({ app, profile: nextP });
-          }}
-        />
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => onSaveWhatIfVersion(app, submittedResult.profile)}
+          <p
+            style={{
+              color: 'var(--text-muted)',
+              fontSize: 14,
+              marginBottom: 28,
+              lineHeight: 1.5,
+            }}
           >
-            Save What-If State as New Application Version
-          </button>
+            An email was sent to <strong>{approverEmailsStr}</strong>
+          </p>
+
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                if (onNavigate) {
+                  onNavigate('my_applications');
+                } else {
+                  handleClearDraft();
+                }
+              }}
+            >
+              View My Applications
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleClearDraft}
+            >
+              Create another
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -880,23 +824,6 @@ export function NewApplication({
                   <div className="field-error">{stepErrors.submittedByEmail}</div>
                 )}
               </div>
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <label className="field-label">Customer Email (Optional)</label>
-              <input
-                type="email"
-                className={`input ${stepErrors.customerEmail ? 'input-error' : ''}`}
-                placeholder="e.g. customer@example.ao"
-                value={draft.customerEmail}
-                onChange={(e) => setDraft((p) => ({ ...p, customerEmail: e.target.value }))}
-              />
-              <div className="field-helper">
-                Notifications are only sent to the customer if enabled in Admin settings (default off).
-              </div>
-              {stepErrors.customerEmail && (
-                <div className="field-error">{stepErrors.customerEmail}</div>
-              )}
             </div>
           </div>
 
@@ -1733,9 +1660,6 @@ export function NewApplication({
               <div>
                 Submitted By: <strong>{draft.submittedByName || 'Thomas Silva'}</strong> ({draft.submittedByEmail})
               </div>
-              {draft.customerEmail && (
-                <div>Customer Email: <strong>{draft.customerEmail}</strong> (Optional)</div>
-              )}
               <div style={{ color: 'var(--brand-700)', fontWeight: 600, marginTop: 4 }}>
                 Approvers will be notified by email when you submit.
               </div>
