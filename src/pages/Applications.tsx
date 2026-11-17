@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { COPY } from '../copy/en';
 import { LoanApplication, Evaluation } from '../types';
-import { getStoredApplications, saveApplication, updateApplicationStatus } from '../lib/loans';
+import { getStoredApplications, saveApplication, updateApplicationStatus, softDeleteApplication } from '../lib/loans';
 import { getStoredEvaluations } from '../lib/evaluations';
 import { useSyncDatabase } from '../lib/syncClient';
 import { getStoredEquipment } from '../lib/config';
@@ -21,6 +21,7 @@ import {
   Mail,
   ShoppingBag,
   Store,
+  Trash2,
 } from 'lucide-react';
 import { StatusChip } from '../components/StatusChip';
 import { Modal } from '../components/Modal';
@@ -34,6 +35,7 @@ export const Applications: React.FC = () => {
   const [search, setSearch] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [inspectApp, setInspectApp] = useState<LoanApplication | null>(null);
+  const [deleteConfirmApp, setDeleteConfirmApp] = useState<LoanApplication | null>(null);
   const [justSubmittedApp, setJustSubmittedApp] = useState<LoanApplication | null>(null);
   const [orderConfirmApp, setOrderConfirmApp] = useState<LoanApplication | null>(null);
   const [purchaseSuccessMessage, setPurchaseSuccessMessage] = useState<string>('');
@@ -335,7 +337,13 @@ export const Applications: React.FC = () => {
                     <tr
                       key={app.id}
                       className="hover:bg-slate-50/70 transition-colors cursor-pointer"
-                      onClick={() => setInspectApp(app)}
+                      onClick={() => {
+                        if (app.status === 'draft') {
+                          navigate('/evaluate?resume=true');
+                        } else {
+                          setInspectApp(app);
+                        }
+                      }}
                     >
                       {/* ID */}
                       <td className="py-3 px-4 whitespace-nowrap font-mono font-bold text-navy">
@@ -420,6 +428,16 @@ export const Applications: React.FC = () => {
                             title="Inspect application details"
                           >
                             <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirmApp(app);
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            title={`Delete ${cust?.full_name || 'applicant'}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -800,6 +818,49 @@ export const Applications: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* ================= MODAL: CONFIRM SOFT DELETE ================= */}
+      {deleteConfirmApp && (
+        <Modal
+          isOpen={!!deleteConfirmApp}
+          onClose={() => setDeleteConfirmApp(null)}
+          className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+        >
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-full bg-red-50 text-red-600 shrink-0">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                Delete {deleteConfirmApp.evaluation?.customer?.full_name || 'Application'}?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                This hides the application from active lists. Approver and admin can still view it in the audit log.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setDeleteConfirmApp(null)}
+              className="px-3.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                softDeleteApplication(deleteConfirmApp.id, `${currentUser?.full_name || 'Applicant'}`);
+                setApplications(getStoredApplications());
+                setDeleteConfirmApp(null);
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-bold text-white shadow-xs"
+            >
+              Delete
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

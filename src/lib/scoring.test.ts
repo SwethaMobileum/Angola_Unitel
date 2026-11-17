@@ -114,20 +114,18 @@ describe('Unitel Credit Scoring Engine', () => {
     const resultOff = calculateCreditScore({ ...baseCustomerInput, walletAvailable: false });
 
     expect(resultOff.blockScores.W.hasData).toBe(false);
-    expect(resultOff.blockScores.W.effectivePoints).toBe(0);
-    // W points (42) must have moved to T (40 + 42 = 82)
-    expect(resultOff.blockScores.T.effectivePoints).toBe(82);
+    expect(resultOff.blockScores.W.status).toBe('skipped');
+    expect(resultOff.blockScores.W.earnedPoints).toBe(0);
+    // Effective points keep segment's base weight (no redistribution)
+    expect(resultOff.blockScores.W.effectivePoints).toBe(42);
+    expect(resultOff.blockScores.T.effectivePoints).toBe(40);
     expect(resultOff.blockScores.P.effectivePoints).toBe(12);
-    // Base points sum must still be 94 (82 + 12 = 94)
-    expect(resultOff.blockScores.T.effectivePoints + resultOff.blockScores.P.effectivePoints).toBe(94);
-    // Total points must never exceed 100
-    expect(resultOff.totalPoints).toBeLessThanOrEqual(100);
-    // Confidence is lower when primary wallet channel is switched off
-    expect(resultOff.dataConfidence).toBe('medium');
-    // Redistribution record present
-    const wRedistribution = resultOff.redistributions.find(r => r.fromBlock === 'W' && r.toBlock === 'T');
-    expect(wRedistribution).toBeDefined();
-    expect(wRedistribution?.points).toBe(42);
+    // Base points sum must still be 94 (12 + 40 + 42 = 94)
+    expect(resultOff.blockScores.P.effectivePoints + resultOff.blockScores.T.effectivePoints + resultOff.blockScores.W.effectivePoints).toBe(94);
+    // Score is lower when wallet is switched off (missing data lowers score)
+    expect(resultOff.score).toBeLessThan(resultOn.score);
+    // No redistributions recorded
+    expect(resultOff.redistributions).toHaveLength(0);
   });
 
   // Test 4: Missing block is never counted as zero (not penalized)
@@ -157,18 +155,21 @@ describe('Unitel Credit Scoring Engine', () => {
 
     const result = calculateCreditScore(s5MissingBankInput);
 
-    // Bank block is detected as having no data
+    // Bank block is detected as having no data and marked 'nil'
     expect(result.blockScores.B.hasData).toBe(false);
+    expect(result.blockScores.B.status).toBe('nil');
     expect(result.blockScores.B.earnedPoints).toBe(0);
 
-    // Bank's 50 points were moved to the active behavioral block (T)
-    // T originally has 25 pts, now has 25 + 50 = 75 pts
-    expect(result.blockScores.T.effectivePoints).toBe(75);
+    // Bank keeps its maximum (50 pts) and is not redistributed
+    expect(result.blockScores.B.effectivePoints).toBe(50);
+    expect(result.blockScores.T.effectivePoints).toBe(25);
+    expect(result.redistributions).toHaveLength(0);
+
     const sumEffective = Object.values(result.blockScores).reduce((s, b) => s + b.effectivePoints, 0);
     expect(sumEffective).toBe(94);
 
-    // Customer achieves a valid score based on available data, not penalized to zero
-    expect(result.score).toBeGreaterThanOrEqual(550);
+    // Data gaps include the bank record gap
+    expect(result.dataGaps).toContain('No bank record: 0 of 50 points');
   });
 
   // Test 5: Asset answers "No" and "Skip" give identical score to no answer
@@ -385,7 +386,7 @@ describe('Unitel Credit Scoring Engine', () => {
     });
     expect(s5Partial.dataCoverageScore).toBeLessThan(50);
     expect(s5Partial.dataCoverageLabel).toBe('Low');
-    expect(s5Partial.missingDataNote).toBe('Missing data did not lower the score.');
+    expect(s5Partial.missingDataNote).toBe('No data scores Nil.');
   });
 
   // Test 10: Rule-based reason generator outputs top 3 plain English reasons
@@ -641,5 +642,27 @@ describe('Unitel Credit Scoring Engine', () => {
     deleteCustomEquipment(customDevice.id);
     const updatedCatalog = getStoredEquipment();
     expect(updatedCatalog.find((eq) => eq.id === customDevice.id)).toBeUndefined();
+  });
+
+  // Test 19: All 5 active segments' block maximums add to 100, Nil scoring, and total equals row sum
+  it('Test 19: All 5 active segments block maximums add to 100, missing data scores Nil, and total equals row sum', () => {
+    const segments: SegmentCode[] = ['S1', 'S3', 'S5', 'S7', 'S8'];
+    for (const seg of segments) {
+      const res = calculateCreditScore({
+        segmentCode: seg,
+        parameterInputs: { id_sim_match: 'yes', sim_tenure_months: 24 },
+        assets: { house: 'yes' },
+      });
+
+      // Sum of base block maximums (must be 94)
+      const sumBaseMax = Object.values(res.blockScores).reduce((sum, b) => sum + b.effectivePoints, 0);
+      expect(sumBaseMax).toBe(94);
+      // Fixed 100-point model invariant: 94 base max + 6 assets bonus max = 100
+      expect(sumBaseMax + 6).toBe(100);
+
+      // Total points must equal sum of earned block points + asset bonus
+      const sumEarned = Object.values(res.blockScores).reduce((sum, b) => sum + b.earnedPoints, 0);
+      expect(res.totalPoints).toBeCloseTo(sumEarned + res.assetBonus, 1);
+    }
   });
 });

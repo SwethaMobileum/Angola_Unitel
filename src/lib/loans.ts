@@ -13,6 +13,164 @@ const STORAGE_KEY_APPLICATIONS = 'unitel_credit_applications_v2';
 const STORAGE_KEY_APPROVALS = 'unitel_credit_approvals_v2';
 const STORAGE_KEY_NOTIFICATIONS = 'unitel_credit_notifications_v2';
 const STORAGE_KEY_AUDIT_LOG = 'unitel_credit_audit_log_v2';
+export const STORAGE_KEY_ACTIVE_DRAFT = 'unitel_credit_active_draft_v3';
+
+export interface ApplicationDraft {
+  id: string;
+  step: number;
+  activeBlock: string;
+  customer: {
+    fullName: string;
+    phone: string;
+    nationalId: string;
+    dob: string;
+    simActivationDate: string;
+    email: string;
+  };
+  selectedSegment: string;
+  walletAvailable: boolean;
+  parameterInputs: Record<string, any>;
+  assets: {
+    house: 'yes' | 'no' | 'skip';
+    land_title: 'yes' | 'no' | 'skip';
+    two_wheeler: 'yes' | 'no' | 'skip';
+    car: 'yes' | 'no' | 'skip';
+  };
+  incomeBandCode: number;
+  statedIncomeKz?: number;
+  selectedEquipmentId: string;
+  termMonths: number;
+  rechargeView: string;
+  updatedAt: string;
+  deleted_at?: string | null;
+}
+
+export function getActiveDraft(): ApplicationDraft | null {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    const raw = localStorage.getItem(STORAGE_KEY_ACTIVE_DRAFT);
+    if (!raw) return null;
+    const parsed: ApplicationDraft = JSON.parse(raw);
+    if (parsed.deleted_at) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function saveActiveDraft(draft: ApplicationDraft): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    localStorage.setItem(STORAGE_KEY_ACTIVE_DRAFT, JSON.stringify(draft));
+
+    // Mirror draft into applications list so "My applications" displays it
+    if (draft.customer && draft.customer.fullName && draft.customer.fullName.trim()) {
+      const allApps = getStoredApplications(true);
+      const draftAppId = draft.id || `app-draft-${draft.customer.phone ? draft.customer.phone.replace(/\D/g, '') : 'curr'}`;
+      const existingIdx = allApps.findIndex(a => a.id === draftAppId);
+
+      const draftApplication: LoanApplication = {
+        id: draftAppId,
+        evaluation_id: `eval-${draftAppId}`,
+        equipment_id: draft.selectedEquipmentId || 'e-1',
+        price_kz: 18000,
+        term_months: draft.termMonths || 6,
+        rate_pct: 0,
+        monthly_emi_kz: 3000,
+        emi_share_pct: 3.0,
+        status: 'draft',
+        submitted_by: '00000000-0000-0000-0000-000000000001',
+        submitted_at: draft.updatedAt || new Date().toISOString(),
+        deleted_at: null,
+        evaluation: {
+          id: `eval-${draftAppId}`,
+          customer_id: `c-${draftAppId}`,
+          analyst_id: '00000000-0000-0000-0000-000000000001',
+          segment_overridden: false,
+          wallet_available: draft.walletAvailable ?? true,
+          config_version_id: 'default',
+          segment_code: (draft.selectedSegment as any) || 'S1',
+          status: 'draft',
+          created_at: draft.updatedAt || new Date().toISOString(),
+          customer: {
+            id: `c-${draftAppId}`,
+            full_name: draft.customer.fullName,
+            msisdn: draft.customer.phone || '+244 923 000 000',
+            national_id_masked: draft.customer.nationalId || '*******',
+            date_of_birth: draft.customer.dob || '1995-01-01',
+            sim_activation_date: draft.customer.simActivationDate || '2022-01-01',
+            email: draft.customer.email || 'customer@unitel.ao',
+          },
+        },
+      };
+
+      if (existingIdx >= 0) {
+        allApps[existingIdx] = {
+          ...allApps[existingIdx],
+          ...draftApplication,
+          deleted_at: allApps[existingIdx].deleted_at,
+        };
+      } else {
+        allApps.unshift(draftApplication);
+      }
+      localStorage.setItem(STORAGE_KEY_APPLICATIONS, JSON.stringify(allApps));
+    }
+  } catch (e) {
+    console.error('Error saving active draft:', e);
+  }
+}
+
+export function clearActiveDraft(): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.removeItem(STORAGE_KEY_ACTIVE_DRAFT);
+    }
+  } catch {}
+}
+
+export function softDeleteApplication(id: string, actorName: string = 'Tomas Silva (Applicant)'): void {
+  try {
+    const allApps = getStoredApplications(true);
+    const index = allApps.findIndex(a => a.id === id);
+    if (index >= 0) {
+      const app = allApps[index];
+      const customerName = app.evaluation?.customer?.full_name || 'Applicant';
+      allApps[index] = {
+        ...app,
+        deleted_at: new Date().toISOString(),
+      };
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem(STORAGE_KEY_APPLICATIONS, JSON.stringify(allApps));
+      }
+
+      // If active draft matches this application or customer, clear it
+      const activeDraft = getActiveDraft();
+      if (activeDraft && (activeDraft.id === id || activeDraft.customer?.fullName === customerName)) {
+        clearActiveDraft();
+      }
+
+      // Write to audit log
+      addAuditLogEntry({
+        id: Date.now(),
+        at: new Date().toISOString(),
+        actor_name: actorName,
+        action: 'delete_application',
+        entity: 'loan_applications',
+        entity_id: id,
+        details: {
+          customer: customerName,
+          status: app.status,
+          equipment: app.equipment?.name,
+          soft_delete: true,
+        },
+      });
+
+      syncApi.updateApplication(id, { deleted_at: new Date().toISOString() });
+    }
+  } catch (e) {
+    console.error('Error soft deleting application:', e);
+  }
+}
 
 // Seed Initial Applications, Approvals, Notifications, and Audit Entries
 export function createSeedLoanData() {
@@ -336,10 +494,11 @@ export function createSeedLoanData() {
   };
 }
 
-export function getStoredApplications(): LoanApplication[] {
+export function getStoredApplications(includeDeleted: boolean = false): LoanApplication[] {
   try {
     if (typeof window === 'undefined' || !window.localStorage) {
-      return createSeedLoanData().applications;
+      const apps = createSeedLoanData().applications;
+      return includeDeleted ? apps : apps.filter(a => !a.deleted_at);
     }
     const raw = localStorage.getItem(STORAGE_KEY_APPLICATIONS);
     if (!raw) {
@@ -348,7 +507,7 @@ export function getStoredApplications(): LoanApplication[] {
       localStorage.setItem(STORAGE_KEY_APPROVALS, JSON.stringify(seed.approvals));
       localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, JSON.stringify(seed.notifications));
       localStorage.setItem(STORAGE_KEY_AUDIT_LOG, JSON.stringify(seed.auditLogs));
-      return seed.applications;
+      return includeDeleted ? seed.applications : seed.applications.filter(a => !a.deleted_at);
     }
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length < 8) {
@@ -357,16 +516,18 @@ export function getStoredApplications(): LoanApplication[] {
       localStorage.setItem(STORAGE_KEY_APPROVALS, JSON.stringify(seed.approvals));
       localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, JSON.stringify(seed.notifications));
       localStorage.setItem(STORAGE_KEY_AUDIT_LOG, JSON.stringify(seed.auditLogs));
-      return seed.applications;
+      return includeDeleted ? seed.applications : seed.applications.filter(a => !a.deleted_at);
     }
-    return parsed;
+    const list: LoanApplication[] = parsed;
+    return includeDeleted ? list : list.filter(a => !a.deleted_at);
   } catch {
-    return createSeedLoanData().applications;
+    const apps = createSeedLoanData().applications;
+    return includeDeleted ? apps : apps.filter(a => !a.deleted_at);
   }
 }
 
 export function saveApplication(app: LoanApplication, analystEmail: string = 'bhargownarravula777@gmail.com'): void {
-  const current = getStoredApplications();
+  const current = getStoredApplications(true);
   current.unshift(app);
   if (typeof window !== 'undefined' && window.localStorage) {
     localStorage.setItem(STORAGE_KEY_APPLICATIONS, JSON.stringify(current));
@@ -434,7 +595,7 @@ export function saveApplication(app: LoanApplication, analystEmail: string = 'bh
 }
 
 export function updateApplicationStatus(id: string, status: LoanApplication['status'], extra?: Partial<LoanApplication>): void {
-  const current = getStoredApplications();
+  const current = getStoredApplications(true);
   const index = current.findIndex(a => a.id === id);
   if (index >= 0) {
     current[index] = { ...current[index], status, ...extra };

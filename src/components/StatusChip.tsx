@@ -1,4 +1,5 @@
 import React from 'react';
+import { getScoreBandColors } from '../lib/scoring';
 
 export type StatusVariant = 'success' | 'warn' | 'danger' | 'neutral' | 'navy';
 
@@ -9,6 +10,28 @@ interface StatusChipProps {
   icon?: React.ReactNode;
   className?: string;
 }
+
+export interface ScoreChipProps {
+  score: number;
+  label?: string;
+  className?: string;
+}
+
+export const ScoreChip: React.FC<ScoreChipProps> = ({ score, label, className = '' }) => {
+  const colors = getScoreBandColors(score);
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold shadow-xs ${className}`}
+      style={{
+        backgroundColor: colors.bg,
+        color: colors.text,
+      }}
+    >
+      <span>{score}</span>
+      {label && <span className="font-sans font-medium text-[11px]">&bull; {label}</span>}
+    </span>
+  );
+};
 
 export const StatusChip: React.FC<StatusChipProps> = ({
   label,

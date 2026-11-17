@@ -1255,8 +1255,8 @@ export const Admin: React.FC = () => {
                 Global Wallet Module (`wallet_enabled`)
               </span>
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                When turned off, the Wallet (W) block is hidden across all evaluation screens, question 4
-                is skipped in segment finder, and wallet weight is dynamically redistributed to other blocks.
+                When turned off, the Wallet (W) block is skipped, question 4
+                is bypassed, and wallet points score 0 (Skipped / Nil) without redistribution.
               </p>
             </div>
 

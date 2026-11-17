@@ -26,7 +26,7 @@ A production-grade web application for telecom proxy credit scoring and device f
   - Interactive points table editor with instant **Live Test Card** recalculation.
   - Segment weights editor with live $P+T+W+B+X = 94$ invariant validation (saving is blocked if any segment $\ne 94$).
   - Data sources registry monitor with "Connect new source" modal.
-  - Global `wallet_enabled` feature switch with automatic points redistribution.
+  - Global `wallet_enabled` feature switch with Nil / Skipped scoring when off.
 
 ---
 
@@ -126,7 +126,7 @@ Use this script to present the application to executive stakeholders in 3 minute
    - Score: ~678 / 900 (Acceptable Band, within 650-700 target range).
    - "High Data Coverage" badge.
    - Horizontal points bars per block (Telecom 34.2 of 40, Wallet 36.8 of 42).
-   - Top 3 positive credit drivers and "Missing data did not lower the score" guarantee.
+   - Top 3 positive credit drivers and transparent gap alerts ("No data scores Nil").
 
 [Step 5: Equipment Financing & Submission (1:45 - 2:05)]
 10. Click "Apply for equipment loan".

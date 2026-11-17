@@ -181,6 +181,7 @@ export interface Evaluation {
   income_source?: 'stated' | 'estimated';
   status: 'draft' | 'saved' | 'scored' | 'submitted' | 'approved' | 'rejected' | 'purchased';
   created_at: string;
+  deleted_at?: string | null;
   customer?: Customer;
   results?: EvaluationResult;
 }
@@ -222,6 +223,7 @@ export interface LoanApplication {
   submitted_by: string;
   submitted_at: string;
   purchased_at?: string;
+  deleted_at?: string | null;
   evaluation?: Evaluation;
   equipment?: Equipment;
 }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LoanApplication, Evaluation, Customer } from '../types';
-import { getStoredApplications, updateApplicationStatus } from '../lib/loans';
+import { getStoredApplications, updateApplicationStatus, softDeleteApplication } from '../lib/loans';
 import { getStoredEvaluations } from '../lib/evaluations';
 import { useSyncDatabase } from '../lib/syncClient';
 import { formatKz } from '../lib/money';
@@ -20,8 +20,9 @@ import {
   Clock,
   Eye,
   FileText,
+  Trash2,
 } from 'lucide-react';
-import { StatusChip } from '../components/StatusChip';
+import { StatusChip, ScoreChip } from '../components/StatusChip';
 import { Modal } from '../components/Modal';
 
 interface UnifiedCustomerRecord {
@@ -60,6 +61,7 @@ export const ApplicantDashboard: React.FC = () => {
   const [segmentFilter, setSegmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedCustomer, setSelectedCustomer] = useState<UnifiedCustomerRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UnifiedCustomerRecord | null>(null);
   const [handoverSuccess, setHandoverSuccess] = useState<string | null>(null);
 
   // Load live data from shared database & localStorage
@@ -539,8 +541,8 @@ export const ApplicantDashboard: React.FC = () => {
 
                     {/* Score & Limit */}
                     <td className="py-3.5 px-3">
-                      <div className="font-bold text-slate-900">{rec.score} / 900</div>
-                      <div className="text-[10px] text-slate-500">Cap: {formatKz(rec.limitKz)}</div>
+                      <ScoreChip score={rec.score} />
+                      <div className="text-[10px] text-slate-500 mt-1">Cap: {formatKz(rec.limitKz)}</div>
                     </td>
 
                     {/* Equipment Plan */}
@@ -561,7 +563,7 @@ export const ApplicantDashboard: React.FC = () => {
                     {/* Actions */}
                     <td className="py-3.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1.5">
-                        {rec.status === 'approved' ? (
+                        {rec.status === 'approved' && (
                           <button
                             type="button"
                             onClick={() => handleConfirmHandover(rec)}
@@ -570,16 +572,23 @@ export const ApplicantDashboard: React.FC = () => {
                           >
                             Handover
                           </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setSelectedCustomer(rec)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-orange hover:bg-orange-soft/40 transition-colors"
-                            title="View customer file"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCustomer(rec)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-orange hover:bg-orange-soft/40 transition-colors"
+                          title="View customer file"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(rec)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title={`Delete ${rec.customer.full_name}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -779,6 +788,51 @@ export const ApplicantDashboard: React.FC = () => {
           </>
         )}
       </Modal>
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <Modal
+          isOpen={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+        >
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-full bg-red-50 text-red-600 shrink-0">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                Delete {deleteTarget.customer.full_name}?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                This hides the application from active lists. Approver and admin can still view it in the audit log.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              className="px-3.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (deleteTarget.applicationId) {
+                  softDeleteApplication(deleteTarget.applicationId, `${currentUser?.full_name || 'Applicant'}`);
+                }
+                loadData();
+                setDeleteTarget(null);
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-bold text-white shadow-xs"
+            >
+              Delete
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

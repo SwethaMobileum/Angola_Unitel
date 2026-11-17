@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { SegmentCode, BlockCode, Evaluation, LoanApplication, TelecomRechargeRecord, Equipment } from '../types';
 import { DEFAULT_EQUIPMENT } from '../data/seedData';
 import { getStoredEquipment, addCustomEquipment, deleteCustomEquipment } from '../lib/config';
 import { calculateCreditScore, DEFAULT_POINT_RULES } from '../lib/scoring';
 import { formatKz } from '../lib/money';
 import { saveEvaluation } from '../lib/evaluations';
-import { saveApplication } from '../lib/loans';
+import { saveApplication, getActiveDraft, saveActiveDraft, clearActiveDraft, ApplicationDraft } from '../lib/loans';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { Modal } from '../components/Modal';
 import {
@@ -39,6 +39,8 @@ import {
   Plus,
   Trash2,
   SlidersHorizontal,
+  Lock,
+  FileText,
 } from 'lucide-react';
 
 interface DataSourceTick {
@@ -50,11 +52,13 @@ interface DataSourceTick {
 
 export const NewEvaluation: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // Wizard Step (1 to 6)
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [maxCompletedStep, setMaxCompletedStep] = useState<number>(1);
   const [showHowItWorks, setShowHowItWorks] = useState<boolean>(true);
+  const [activeDraft, setActiveDraft] = useState<ApplicationDraft | null>(() => getActiveDraft());
 
   // Step 1: Customer Details & Data Sources Check
   const [customer, setCustomer] = useState({
@@ -147,23 +151,125 @@ export const NewEvaluation: React.FC = () => {
   const [customEqPriceKz, setCustomEqPriceKz] = useState<string>('');
   const [customEqError, setCustomEqError] = useState<string>('');
 
-  // Compute live age and SIM tenure
+  // Compute live age and SIM tenure (Single source of truth is activation date)
   const calculateAge = (dob: string) => {
+    if (!dob) return 25;
     const birth = new Date(dob);
+    if (isNaN(birth.getTime())) return 25;
     const diff = Date.now() - birth.getTime();
     return Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25));
   };
 
-  const calculateSimTenureMonths = (activationDate: string) => {
+  const calculateSimTenureMonths = (activationDate?: string): number => {
+    if (!activationDate) return 0;
     const act = new Date(activationDate);
-    const diffMs = Date.now() - act.getTime();
-    return Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.4375)));
+    if (isNaN(act.getTime())) return 0;
+    const now = new Date();
+    if (act > now) return 0; // future date invalid
+    let months = (now.getFullYear() - act.getFullYear()) * 12 + (now.getMonth() - act.getMonth());
+    if (now.getDate() < act.getDate()) months--;
+    return Math.max(0, months);
   };
 
   const applicantAge = calculateAge(customer.dateOfBirth);
   const simTenureMonths = calculateSimTenureMonths(customer.simActivationDate);
   const isUnderAge = applicantAge < 18;
   const isIdMismatch = customer.idSimMatch === false;
+
+  // Resume draft from URL parameter ?resume=true
+  useEffect(() => {
+    const draft = getActiveDraft();
+    if (draft) {
+      setActiveDraft(draft);
+      if (searchParams.get('resume') === 'true') {
+        applyDraft(draft);
+      }
+    }
+  }, [searchParams]);
+
+  const applyDraft = (draft: ApplicationDraft) => {
+    if (draft.customer) {
+      setCustomer({
+        fullName: draft.customer.fullName || '',
+        email: draft.customer.email || 'bhargownarravula777@gmail.com',
+        msisdn: draft.customer.phone || '',
+        nationalId: draft.customer.nationalId || '',
+        dateOfBirth: draft.customer.dob || '1995-01-01',
+        simActivationDate: draft.customer.simActivationDate || '2022-01-01',
+        idSimMatch: true,
+      });
+    }
+    if (draft.selectedSegment) {
+      setResolvedSegment(draft.selectedSegment as SegmentCode);
+    }
+    if (draft.walletAvailable !== undefined) {
+      setWalletAvailable(draft.walletAvailable);
+    }
+    if (draft.parameterInputs) {
+      setParameterInputs(draft.parameterInputs);
+    }
+    if (draft.assets) {
+      setAssets(draft.assets);
+    }
+    if (draft.incomeBandCode) {
+      setIncomeBandCode(draft.incomeBandCode);
+    }
+    if (draft.statedIncomeKz) {
+      setCustomIncomeKz(String(draft.statedIncomeKz));
+    }
+    if (draft.selectedEquipmentId) {
+      setSelectedEquipmentId(draft.selectedEquipmentId);
+    }
+    if (draft.termMonths) {
+      setSelectedTermMonths(draft.termMonths);
+    }
+    if (draft.activeBlock) {
+      setActiveBlock(draft.activeBlock as BlockCode);
+    }
+    if (draft.step) {
+      setCurrentStep(draft.step);
+      setMaxCompletedStep((prev) => Math.max(prev, draft.step));
+    }
+    setActiveDraft(null);
+  };
+
+  const handleDiscardDraft = () => {
+    clearActiveDraft();
+    setActiveDraft(null);
+  };
+
+  // Auto-save draft snapshot to storage and application store
+  const saveDraftSnapshot = (overrides?: Partial<any>) => {
+    const cust = overrides?.customer || customer;
+    if (!cust.fullName || !cust.fullName.trim()) return;
+
+    saveActiveDraft({
+      id: `app-draft-${cust.msisdn ? cust.msisdn.replace(/\D/g, '') : Date.now()}`,
+      step: overrides?.currentStep ?? currentStep,
+      activeBlock: overrides?.activeBlock ?? activeBlock,
+      customer: {
+        fullName: cust.fullName,
+        phone: cust.msisdn,
+        nationalId: cust.nationalId,
+        dob: cust.dateOfBirth,
+        simActivationDate: cust.simActivationDate,
+        email: cust.email,
+      },
+      selectedSegment: overrides?.resolvedSegment ?? resolvedSegment,
+      walletAvailable: overrides?.walletAvailable ?? walletAvailable,
+      parameterInputs: {
+        ...(overrides?.parameterInputs ?? parameterInputs),
+        sim_tenure_months: simTenureMonths,
+      },
+      assets: overrides?.assets ?? assets,
+      incomeBandCode: overrides?.incomeBandCode ?? incomeBandCode,
+      statedIncomeKz: overrides?.customIncomeKz ? Number(overrides.customIncomeKz) : (customIncomeKz ? Number(customIncomeKz) : undefined),
+      selectedEquipmentId: overrides?.selectedEquipmentId ?? selectedEquipmentId,
+      termMonths: overrides?.selectedTermMonths ?? selectedTermMonths,
+      rechargeView,
+      updatedAt: new Date().toISOString(),
+    });
+  };
 
   // Derive resolved segment from 4 Yes/No questions (First YES wins)
   useEffect(() => {
@@ -345,6 +451,101 @@ export const NewEvaluation: React.FC = () => {
     if (stepNumber <= maxCompletedStep + 1) {
       setCurrentStep(stepNumber);
       setMaxCompletedStep((prev) => Math.max(prev, stepNumber));
+      saveDraftSnapshot({ currentStep: stepNumber });
+    }
+  };
+
+  // Block completion & locking checks (Change Request v3)
+  const isBlockComplete = (blk: BlockCode): boolean => {
+    switch (blk) {
+      case 'P':
+        return (
+          parameterInputs.id_sim_match !== undefined && parameterInputs.id_sim_match !== '' &&
+          parameterInputs.employment_status !== undefined && parameterInputs.employment_status !== '' &&
+          parameterInputs.time_in_activity_months !== undefined && parameterInputs.time_in_activity_months !== ''
+        );
+      case 'T':
+        return (
+          simTenureMonths !== undefined &&
+          parameterInputs.topup_months_of_12 !== undefined && parameterInputs.topup_months_of_12 !== '' &&
+          parameterInputs.recharges_per_month !== undefined && parameterInputs.recharges_per_month !== '' &&
+          parameterInputs.recharge_value_per_month_kz !== undefined && parameterInputs.recharge_value_per_month_kz !== '' &&
+          parameterInputs.spend_stability !== undefined && parameterInputs.spend_stability !== '' &&
+          parameterInputs.airtime_loan_repayment !== undefined && parameterInputs.airtime_loan_repayment !== ''
+        );
+      case 'W':
+        return (
+          parameterInputs.wallet_months_active !== undefined && parameterInputs.wallet_months_active !== '' &&
+          parameterInputs.wallet_inflow_months_of_12 !== undefined && parameterInputs.wallet_inflow_months_of_12 !== '' &&
+          parameterInputs.avg_monthly_inflow_kz !== undefined && parameterInputs.avg_monthly_inflow_kz !== '' &&
+          parameterInputs.bill_payments_via_wallet !== undefined && parameterInputs.bill_payments_via_wallet !== ''
+        );
+      case 'B':
+        return (
+          parameterInputs.account_age_months !== undefined && parameterInputs.account_age_months !== '' &&
+          parameterInputs.credits_months_of_12 !== undefined && parameterInputs.credits_months_of_12 !== '' &&
+          parameterInputs.returned_payments_12m !== undefined && parameterInputs.returned_payments_12m !== ''
+        );
+      case 'X':
+        return (
+          parameterInputs.utility_bills_on_time !== undefined && parameterInputs.utility_bills_on_time !== '' &&
+          parameterInputs.nif_standing !== undefined && parameterInputs.nif_standing !== ''
+        );
+      default:
+        return true;
+    }
+  };
+
+  const isBlockUnlocked = (blk: BlockCode): boolean => {
+    const idx = segmentActiveBlocks.indexOf(blk);
+    if (idx <= 0) return true;
+    for (let i = 0; i < idx; i++) {
+      if (!isBlockComplete(segmentActiveBlocks[i])) return false;
+    }
+    return true;
+  };
+
+  const currentBlockIdx = segmentActiveBlocks.indexOf(activeBlock);
+  const isLastBlock = currentBlockIdx >= segmentActiveBlocks.length - 1;
+  const isFirstBlock = currentBlockIdx <= 0;
+
+  const nextBlockCode = !isLastBlock ? segmentActiveBlocks[currentBlockIdx + 1] : null;
+  const prevBlockCode = !isFirstBlock ? segmentActiveBlocks[currentBlockIdx - 1] : null;
+
+  const getBlockName = (code: BlockCode | null) => {
+    switch (code) {
+      case 'P': return 'Personal details';
+      case 'T': return 'Telecom details';
+      case 'W': return 'Wallet details';
+      case 'B': return 'Bank details';
+      case 'X': return 'Alternative details';
+      default: return 'Details';
+    }
+  };
+
+  const nextButtonLabel = isLastBlock
+    ? 'Continue to Assets and income'
+    : `Continue to ${getBlockName(nextBlockCode)}`;
+
+  const backButtonLabel = isFirstBlock
+    ? 'Back to Segment selection'
+    : `Back to ${getBlockName(prevBlockCode)}`;
+
+  const handleNextBlock = () => {
+    if (isLastBlock) {
+      goToStep(4);
+    } else if (nextBlockCode) {
+      setActiveBlock(nextBlockCode);
+      saveDraftSnapshot({ activeBlock: nextBlockCode });
+    }
+  };
+
+  const handlePrevBlock = () => {
+    if (isFirstBlock) {
+      goToStep(2);
+    } else if (prevBlockCode) {
+      setActiveBlock(prevBlockCode);
+      saveDraftSnapshot({ activeBlock: prevBlockCode });
     }
   };
 
@@ -651,6 +852,35 @@ export const NewEvaluation: React.FC = () => {
       {/* STEP 1: CUSTOMER DETAILS */}
       {currentStep === 1 && (
         <div className="bg-card rounded-2xl p-6 border-2 border-orange shadow-xs space-y-5 animate-in fade-in duration-200">
+          {/* Active Draft Continuation Banner (Change Request v3) */}
+          {activeDraft && (
+            <div className="p-3.5 bg-orange-50 border border-orange-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 text-ink font-medium">
+                <FileText className="w-4 h-4 text-orange-600 shrink-0" />
+                <span>
+                  Continue <strong>{activeDraft.customer?.fullName || 'saved'}</strong>'s draft?
+                  <span className="text-slate-500 ml-1">Resumes at Step {activeDraft.step}.</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => applyDraft(activeDraft)}
+                  className="px-3.5 py-1 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg text-xs shadow-xs"
+                >
+                  Continue
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDiscardDraft}
+                  className="px-3 py-1 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-semibold rounded-lg text-xs"
+                >
+                  Start new
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-xl font-black font-heading text-ink">Customer Details</h2>
@@ -707,6 +937,7 @@ export const NewEvaluation: React.FC = () => {
                 type="text"
                 value={customer.fullName}
                 onChange={(e) => setCustomer({ ...customer, fullName: e.target.value })}
+                onBlur={() => saveDraftSnapshot()}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-orange-500 focus:bg-white"
                 placeholder="e.g. Matthew Silva"
               />
@@ -718,6 +949,7 @@ export const NewEvaluation: React.FC = () => {
                 type="text"
                 value={customer.msisdn}
                 onChange={(e) => setCustomer({ ...customer, msisdn: e.target.value })}
+                onBlur={() => saveDraftSnapshot()}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-semibold focus:ring-2 focus:ring-orange-500 focus:bg-white"
                 placeholder="+244 923 000 101"
               />
@@ -729,6 +961,7 @@ export const NewEvaluation: React.FC = () => {
                 type="text"
                 value={customer.nationalId}
                 onChange={(e) => setCustomer({ ...customer, nationalId: e.target.value })}
+                onBlur={() => saveDraftSnapshot()}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-orange-500 focus:bg-white"
                 placeholder="004819284MS31"
               />
@@ -740,6 +973,7 @@ export const NewEvaluation: React.FC = () => {
                 type="date"
                 value={customer.dateOfBirth}
                 onChange={(e) => setCustomer({ ...customer, dateOfBirth: e.target.value })}
+                onBlur={() => saveDraftSnapshot()}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:bg-white"
               />
               <span className={`text-[11px] font-bold mt-1 inline-block ${isUnderAge ? 'text-red-600' : 'text-green-600'}`}>
@@ -751,12 +985,14 @@ export const NewEvaluation: React.FC = () => {
               <label className="block text-xs font-bold text-ink mb-1">SIM Activation Date</label>
               <input
                 type="date"
+                max={new Date().toISOString().split('T')[0]}
                 value={customer.simActivationDate}
                 onChange={(e) => setCustomer({ ...customer, simActivationDate: e.target.value })}
+                onBlur={() => saveDraftSnapshot()}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:bg-white"
               />
-              <span className="text-[11px] font-mono font-semibold text-slate-500 mt-1 inline-block">
-                Tenure: {simTenureMonths} months ({simTenureMonths < 6 ? 'Starter Cap 50k Kz' : 'Full Eligibility'})
+              <span className="text-[11px] font-mono font-bold text-orange-600 mt-1 inline-block">
+                SIM age: {simTenureMonths} months
               </span>
             </div>
 
@@ -766,6 +1002,7 @@ export const NewEvaluation: React.FC = () => {
                 type="email"
                 value={customer.email}
                 onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
+                onBlur={() => saveDraftSnapshot()}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-orange-900 focus:ring-2 focus:ring-orange-500 focus:bg-white"
               />
               <span className="text-[10px] text-slate-400 mt-1 block">Live decision delivery via Brevo</span>
@@ -1085,14 +1322,20 @@ export const NewEvaluation: React.FC = () => {
           <div className="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <h2 className="text-xl font-black font-heading text-ink">Behavior Parameters</h2>
-              <p className="text-xs text-slate-500">Data pulled from verified sources or entered.</p>
+              <p className="text-xs text-slate-500">Complete each block to continue. Missing or unavailable data scores Nil.</p>
             </div>
-            <span className="text-xs font-mono font-semibold text-slate-400">
-              Blank values are skipped without penalty
+            <span className="text-xs font-mono font-semibold text-slate-500">
+              {isBlockComplete(activeBlock) ? (
+                <span className="text-green-600 font-bold flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 inline" /> Block complete
+                </span>
+              ) : (
+                <span className="text-amber-600 font-medium">Please answer all fields</span>
+              )}
             </span>
           </div>
 
-          {/* Block Tabs */}
+          {/* Block Tabs with Status Icons */}
           <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
             {segmentActiveBlocks.map((blk) => {
               const label =
@@ -1106,23 +1349,38 @@ export const NewEvaluation: React.FC = () => {
                         ? 'Bank (B)'
                         : 'Alternative (X)';
               const isActive = activeBlock === blk;
+              const isComplete = isBlockComplete(blk);
+              const isUnlocked = isBlockUnlocked(blk);
 
               return (
                 <button
                   key={blk}
-                  onClick={() => setActiveBlock(blk)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${isActive
-                    ? 'bg-orange-600 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
+                  disabled={!isUnlocked}
+                  onClick={() => {
+                    setActiveBlock(blk);
+                    saveDraftSnapshot({ activeBlock: blk });
+                  }}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    isActive
+                      ? 'bg-orange-600 text-white shadow-xs'
+                      : isUnlocked
+                      ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      : 'bg-slate-50 text-slate-400 cursor-not-allowed opacity-60'
+                  }`}
+                  title={!isUnlocked ? 'Complete previous blocks first' : label}
                 >
+                  {isComplete ? (
+                    <CheckCircle2 className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-green-600'}`} />
+                  ) : !isUnlocked ? (
+                    <Lock className="w-3 h-3 text-slate-400" />
+                  ) : null}
                   <span>{label}</span>
                 </button>
               );
             })}
           </div>
 
-          {/* Compact 2-Column Grid for Parameters */}
+          {/* Block Content Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* P: Personal Block */}
             {activeBlock === 'P' && (
@@ -1135,12 +1393,14 @@ export const NewEvaluation: React.FC = () => {
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.id_sim_match || 'yes'}
+                    value={parameterInputs.id_sim_match ?? 'yes'}
                     onChange={(e) => setParameterInputs({ ...parameterInputs, id_sim_match: e.target.value })}
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
-                    <option value="yes">Yes (Matched & Verified)</option>
-                    <option value="no">No (Mismatch - Hard Stop)</option>
+                    <option value="yes">Yes (Matched & Verified) (+10 pts)</option>
+                    <option value="no">No (Mismatch - Hard Stop) (0 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-100 text-orange-800 font-semibold">
@@ -1158,14 +1418,16 @@ export const NewEvaluation: React.FC = () => {
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.employment_status || 'other'}
+                    value={parameterInputs.employment_status ?? 'other'}
                     onChange={(e) => setParameterInputs({ ...parameterInputs, employment_status: e.target.value })}
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
-                    <option value="formal_job">Formal job (Corporate/Gov)</option>
-                    <option value="self_employed">Self-employed / Shop owner</option>
-                    <option value="informal_business">Informal trade</option>
-                    <option value="other">Other / Not specified</option>
+                    <option value="formal_job">Formal job (Corporate/Gov) (+10 pts)</option>
+                    <option value="self_employed">Self-employed / Shop owner (+7 pts)</option>
+                    <option value="informal_business">Informal trade (+4 pts)</option>
+                    <option value="other">Other / Not specified (+2 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold">
@@ -1182,15 +1444,17 @@ export const NewEvaluation: React.FC = () => {
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.time_in_activity_months || 18}
+                    value={parameterInputs.time_in_activity_months ?? 18}
                     onChange={(e) =>
-                      setParameterInputs({ ...parameterInputs, time_in_activity_months: parseInt(e.target.value, 10) })
+                      setParameterInputs({ ...parameterInputs, time_in_activity_months: e.target.value === 'not_available' ? 'not_available' : parseInt(e.target.value, 10) })
                     }
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
-                    <option value={4}>Under 6 months (+1 pt)</option>
-                    <option value={18}>6 to 24 months (+3 pts)</option>
                     <option value={36}>Over 24 months (+5 pts)</option>
+                    <option value={18}>6 to 24 months (+3 pts)</option>
+                    <option value={4}>Under 6 months (+1 pt)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold">
@@ -1201,317 +1465,164 @@ export const NewEvaluation: React.FC = () => {
               </>
             )}
 
-            {/* T: Telecom Block */}
+            {/* T: Telecom Block - Exactly 6 Equal Cards in 2-Column Grid */}
             {activeBlock === 'T' && (
               <>
+                {/* Card a: SIM tenure (READ-ONLY, auto-calculated from activation date) */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-ink">SIM Tenure (Months)</label>
+                    <label className="text-xs font-bold text-ink">SIM tenure</label>
                     <span className="text-xs font-mono font-bold text-orange-600">
-                      +{getParamPoints('sim_tenure_months', parameterInputs.sim_tenure_months)} pts
+                      +{getParamPoints('sim_tenure_months', simTenureMonths)} pts
                     </span>
                   </div>
-                  <select
-                    value={parameterInputs.sim_tenure_months || 30}
-                    onChange={(e) =>
-                      setParameterInputs({ ...parameterInputs, sim_tenure_months: parseInt(e.target.value, 10) })
-                    }
-                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
-                  >
-                    <option value={2}>Under 3 months (0 pts)</option>
-                    <option value={4}>3–6 months (2 pts)</option>
-                    <option value={8}>6–12 months (4 pts)</option>
-                    <option value={18}>12–24 months (7 pts)</option>
-                    <option value={30}>Over 24 months (10 pts)</option>
-                  </select>
+                  <div className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-ink">
+                    {simTenureMonths} months
+                  </div>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-100 text-orange-800 font-semibold">
-                      From Unitel
+                      From SIM activation date
                     </span>
-                    <span className="text-[10px] text-slate-400">CDR tenure</span>
                   </div>
                 </div>
 
+                {/* Card b: Top-up months of last 12 */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-ink">Top-Up Months of Last 12</label>
+                    <label className="text-xs font-bold text-ink">Top-up months of last 12</label>
                     <span className="text-xs font-mono font-bold text-orange-600">
                       +{getParamPoints('topup_months_of_12', parameterInputs.topup_months_of_12)} pts
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.topup_months_of_12 || 11}
+                    value={parameterInputs.topup_months_of_12 ?? 11}
                     onChange={(e) =>
-                      setParameterInputs({ ...parameterInputs, topup_months_of_12: parseInt(e.target.value, 10) })
+                      setParameterInputs({ ...parameterInputs, topup_months_of_12: e.target.value === 'not_available' ? 'not_available' : parseInt(e.target.value, 10) })
                     }
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
+                    <option value={11}>10–12 months (+10 pts)</option>
+                    <option value={8}>7–9 months (+6 pts)</option>
+                    <option value={5}>4–6 months (+3 pts)</option>
                     <option value={2}>0–3 months (0 pts)</option>
-                    <option value={5}>4–6 months (3 pts)</option>
-                    <option value={8}>7–9 months (6 pts)</option>
-                    <option value={11}>10–12 months (10 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-100 text-orange-800 font-semibold">
-                      From Unitel
+                      {sourceTicks[0]?.found ? 'From Unitel' : 'You entered'}
                     </span>
                   </div>
                 </div>
 
-                {/* Recharges Compact Card with Month/Quarter toggle, points, source chip, and 12-month bar chart */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 md:col-span-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs font-bold text-ink">Recharges</label>
-                      <span
-                        className={`text-[10px] font-mono px-2 py-0.5 rounded font-semibold ${
-                          rechargeHistory && rechargeHistory.length > 0
-                            ? 'bg-orange-100 text-orange-800'
-                            : 'bg-slate-200 text-slate-700'
-                        }`}
-                      >
-                        {rechargeHistory && rechargeHistory.length > 0 ? 'From Unitel' : 'You entered'}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      {/* Month / Quarter Toggle */}
-                      <div className="inline-flex rounded-lg bg-slate-200 p-0.5 text-[11px] font-semibold">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRechargeView('month');
-                            setParameterInputs({
-                              ...parameterInputs,
-                              recharge_view: 'month',
-                              recharge_value_per_quarter_kz: undefined,
-                            });
-                          }}
-                          className={`px-2.5 py-0.5 rounded-md transition-all ${
-                            rechargeView === 'month'
-                              ? 'bg-orange-500 text-white shadow-xs'
-                              : 'text-slate-600 hover:text-ink'
-                          }`}
-                        >
-                          Month
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRechargeView('quarter');
-                            const qVal = parameterInputs.recharge_value_per_quarter_kz ??
-                              (parameterInputs.recharge_value_per_month_kz ? parameterInputs.recharge_value_per_month_kz * 3 : undefined);
-                            setParameterInputs({
-                              ...parameterInputs,
-                              recharge_view: 'quarter',
-                              recharge_value_per_quarter_kz: qVal,
-                              recharge_value_per_month_kz: undefined,
-                            });
-                          }}
-                          className={`px-2.5 py-0.5 rounded-md transition-all ${
-                            rechargeView === 'quarter'
-                              ? 'bg-orange-500 text-white shadow-xs'
-                              : 'text-slate-600 hover:text-ink'
-                          }`}
-                        >
-                          Quarter
-                        </button>
-                      </div>
-
-                      {/* Points earned live */}
-                      <span className="text-xs font-mono font-bold text-orange-600">
-                        +{(
-                          (parameterInputs.recharges_per_month !== undefined
-                            ? getParamPoints('recharges_per_month', parameterInputs.recharges_per_month)
-                            : 0) +
-                          (rechargeView === 'quarter'
-                            ? parameterInputs.recharge_value_per_quarter_kz !== undefined
-                              ? getParamPoints('recharge_value_per_quarter_kz', parameterInputs.recharge_value_per_quarter_kz)
-                              : 0
-                            : parameterInputs.recharge_value_per_month_kz !== undefined
-                            ? getParamPoints('recharge_value_per_month_kz', parameterInputs.recharge_value_per_month_kz)
-                            : 0)
-                        )} pts
-                      </span>
-                    </div>
+                {/* Card c: How often do you recharge? */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-ink">How often do you recharge?</label>
+                    <span className="text-xs font-mono font-bold text-orange-600">
+                      +{getParamPoints('recharges_per_month', parameterInputs.recharges_per_month)} pts
+                    </span>
                   </div>
-
-                  {/* Inputs Row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                    <div>
-                      <div className="flex items-center justify-between text-[11px] font-medium text-slate-700 mb-1">
-                        <span>Recharges / Month (3m avg)</span>
-                        <span className="text-[10px] font-mono font-bold text-orange-600">
-                          {parameterInputs.recharges_per_month !== undefined
-                            ? `+${getParamPoints('recharges_per_month', parameterInputs.recharges_per_month)} pts`
-                            : 'Skipped'}
-                        </span>
-                      </div>
-                      <select
-                        value={parameterInputs.recharges_per_month ?? ''}
-                        onChange={(e) => {
-                          const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                          setParameterInputs({ ...parameterInputs, recharges_per_month: val });
-                        }}
-                        className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
-                      >
-                        <option value="">(Blank - skipped)</option>
-                        <option value={1}>Under 2 (2 pts)</option>
-                        <option value={3}>2–4 recharges (5 pts)</option>
-                        <option value={6}>5–8 recharges (8 pts)</option>
-                        <option value={9}>Over 8 recharges (10 pts)</option>
-                      </select>
-                    </div>
-
-                    {rechargeView === 'month' ? (
-                      <div>
-                        <div className="flex items-center justify-between text-[11px] font-medium text-slate-700 mb-1">
-                          <span>Recharge Value / Month (3m avg)</span>
-                          <span className="text-[10px] font-mono font-bold text-orange-600">
-                            {parameterInputs.recharge_value_per_month_kz !== undefined
-                              ? `+${getParamPoints('recharge_value_per_month_kz', parameterInputs.recharge_value_per_month_kz)} pts`
-                              : 'Skipped'}
-                          </span>
-                        </div>
-                        <select
-                          value={parameterInputs.recharge_value_per_month_kz ?? ''}
-                          onChange={(e) => {
-                            const val = e.target.value === '' ? undefined : parseInt(e.target.value, 10);
-                            setParameterInputs({
-                              ...parameterInputs,
-                              recharge_value_per_month_kz: val,
-                              recharge_value_per_quarter_kz: val !== undefined ? val * 3 : undefined,
-                            });
-                          }}
-                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
-                        >
-                          <option value="">(Blank - skipped)</option>
-                          <option value={1000}>Under 1,500 Kz (2 pts)</option>
-                          <option value={2000}>1,500–3,000 Kz (5 pts)</option>
-                          <option value={4500}>3,000–6,000 Kz (8 pts)</option>
-                          <option value={9000}>Over 6,000 Kz (10 pts)</option>
-                        </select>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="flex items-center justify-between text-[11px] font-medium text-slate-700 mb-1">
-                          <span>Recharge Value / Quarter (3m total)</span>
-                          <span className="text-[10px] font-mono font-bold text-orange-600">
-                            {parameterInputs.recharge_value_per_quarter_kz !== undefined
-                              ? `+${getParamPoints('recharge_value_per_quarter_kz', parameterInputs.recharge_value_per_quarter_kz)} pts`
-                              : 'Skipped'}
-                          </span>
-                        </div>
-                        <select
-                          value={parameterInputs.recharge_value_per_quarter_kz ?? ''}
-                          onChange={(e) => {
-                            const val = e.target.value === '' ? undefined : parseInt(e.target.value, 10);
-                            setParameterInputs({
-                              ...parameterInputs,
-                              recharge_value_per_quarter_kz: val,
-                              recharge_value_per_month_kz: val !== undefined ? Math.round(val / 3) : undefined,
-                            });
-                          }}
-                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
-                        >
-                          <option value="">(Blank - skipped)</option>
-                          <option value={3000}>Under 4,500 Kz (2 pts)</option>
-                          <option value={6000}>4,500–9,000 Kz (5 pts)</option>
-                          <option value={13500}>9,000–18,000 Kz (8 pts)</option>
-                          <option value={27000}>Over 18,000 Kz (10 pts)</option>
-                        </select>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Tiny 12-Month Bar Chart */}
-                  <div className="pt-2 border-t border-slate-200/60">
-                    <div className="flex items-center justify-between text-[10px] text-slate-500 mb-1">
-                      <span className="font-semibold text-slate-600">12-Month Recharge Pattern</span>
-                      <span className="text-[9px] text-slate-400">Values in Kz (last 3m highlighted)</span>
-                    </div>
-                    {rechargeHistory && rechargeHistory.length > 0 ? (
-                      <div className="flex items-end gap-1 h-9 px-1.5 bg-white rounded-lg border border-slate-200/80 py-1">
-                        {rechargeHistory.map((r, i) => {
-                          const maxVal = Math.max(...rechargeHistory.map((m) => m.recharge_value_kz), 1);
-                          const heightPct = Math.max(10, Math.round((r.recharge_value_kz / maxVal) * 100));
-                          const isLast3 = i >= rechargeHistory.length - 3;
-                          return (
-                            <div
-                              key={r.month}
-                              className="flex-1 flex flex-col items-center h-full justify-end group relative cursor-pointer"
-                              title={`${r.month}: ${r.recharge_value_kz.toLocaleString()} Kz (${r.recharge_count} txns)`}
-                            >
-                              <div
-                                style={{ height: `${r.recharge_value_kz > 0 ? heightPct : 8}%` }}
-                                className={`w-full rounded-t-xs transition-all ${
-                                  r.recharge_value_kz === 0
-                                    ? 'bg-slate-200'
-                                    : isLast3
-                                    ? 'bg-orange-500 shadow-xs'
-                                    : 'bg-orange-300 group-hover:bg-orange-400'
-                                }`}
-                              />
-                              <span className="text-[8px] text-slate-400 font-mono mt-0.5 leading-none">
-                                {r.month.split('-')[1]}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="h-8 flex items-center justify-center bg-white rounded border border-dashed border-slate-200 text-[10px] text-slate-400">
-                        No recharge record on file (parameter skipped)
-                      </div>
-                    )}
+                  <select
+                    value={parameterInputs.recharges_per_month ?? 6}
+                    onChange={(e) =>
+                      setParameterInputs({ ...parameterInputs, recharges_per_month: e.target.value === 'not_available' ? 'not_available' : parseFloat(e.target.value) })
+                    }
+                    onBlur={() => saveDraftSnapshot()}
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
+                  >
+                    <option value={9}>Over 8 (+10 pts)</option>
+                    <option value={6}>5–8 (+8 pts)</option>
+                    <option value={3}>2–4 (+5 pts)</option>
+                    <option value={1}>Under 2 (+2 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
+                  </select>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-100 text-orange-800 font-semibold">
+                      {rechargeHistory && rechargeHistory.length > 0 ? 'From Unitel' : 'You entered'}
+                    </span>
                   </div>
                 </div>
 
+                {/* Card d: Typical recharge amount (Kz) */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-ink">Recharge Stability</label>
+                    <label className="text-xs font-bold text-ink">Typical recharge amount (Kz)</label>
+                    <span className="text-xs font-mono font-bold text-orange-600">
+                      +{getParamPoints('recharge_value_per_month_kz', parameterInputs.recharge_value_per_month_kz)} pts
+                    </span>
+                  </div>
+                  <select
+                    value={parameterInputs.recharge_value_per_month_kz ?? 4500}
+                    onChange={(e) =>
+                      setParameterInputs({ ...parameterInputs, recharge_value_per_month_kz: e.target.value === 'not_available' ? 'not_available' : parseInt(e.target.value, 10) })
+                    }
+                    onBlur={() => saveDraftSnapshot()}
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
+                  >
+                    <option value={9000}>Over 6,000 (+10 pts)</option>
+                    <option value={4500}>3,000–6,000 (+8 pts)</option>
+                    <option value={2000}>1,500–3,000 (+5 pts)</option>
+                    <option value={1000}>Under 1,500 (+2 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
+                  </select>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-100 text-orange-800 font-semibold">
+                      {rechargeHistory && rechargeHistory.length > 0 ? 'From Unitel' : 'You entered'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Card e: Recharge stability */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-ink">Recharge stability</label>
                     <span className="text-xs font-mono font-bold text-orange-600">
                       +{getParamPoints('spend_stability', parameterInputs.spend_stability)} pts
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.spend_stability || 'stable'}
+                    value={parameterInputs.spend_stability ?? 'stable'}
                     onChange={(e) => setParameterInputs({ ...parameterInputs, spend_stability: e.target.value })}
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
-                    <option value="stable">Stable (10 pts)</option>
-                    <option value="some_swings">Some swings (5 pts)</option>
-                    <option value="erratic">Erratic (1 pt)</option>
+                    <option value="stable">Stable (+10 pts)</option>
+                    <option value="some_swings">Some swings (+5 pts)</option>
+                    <option value="erratic">Erratic (+1 pt)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-100 text-orange-800 font-semibold">
-                      From Unitel
+                      {sourceTicks[0]?.found ? 'From Unitel' : 'You entered'}
                     </span>
                   </div>
                 </div>
 
+                {/* Card f: Airtime loan repayment */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-ink">Airtime Loan Repayment</label>
+                    <label className="text-xs font-bold text-ink">Airtime loan repayment</label>
                     <span className="text-xs font-mono font-bold text-orange-600">
                       +{getParamPoints('airtime_loan_repayment', parameterInputs.airtime_loan_repayment)} pts
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.airtime_loan_repayment || '80-99%_repaid'}
-                    onChange={(e) =>
-                      setParameterInputs({ ...parameterInputs, airtime_loan_repayment: e.target.value })
-                    }
+                    value={parameterInputs.airtime_loan_repayment ?? '100%_repaid'}
+                    onChange={(e) => setParameterInputs({ ...parameterInputs, airtime_loan_repayment: e.target.value })}
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
-                    <option value="100%_repaid">100% on time (10 pts)</option>
-                    <option value="80-99%_repaid">80–99% repaid (7 pts)</option>
-                    <option value="50_79%_repaid">50–79% repaid (3 pts)</option>
+                    <option value="none_borrowed">None borrowed</option>
+                    <option value="100%_repaid">100% (+10 pts)</option>
+                    <option value="80-99%_repaid">80–99% (+7 pts)</option>
+                    <option value="50_79%_repaid">50–79% (+3 pts)</option>
                     <option value="under_50%_repaid">Under 50% (0 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-100 text-orange-800 font-semibold">
-                      From Unitel
+                      {sourceTicks[0]?.found ? 'From Unitel' : 'You entered'}
                     </span>
                   </div>
                 </div>
@@ -1529,16 +1640,18 @@ export const NewEvaluation: React.FC = () => {
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.wallet_months_active || 14}
+                    value={parameterInputs.wallet_months_active ?? 14}
                     onChange={(e) =>
-                      setParameterInputs({ ...parameterInputs, wallet_months_active: parseInt(e.target.value, 10) })
+                      setParameterInputs({ ...parameterInputs, wallet_months_active: e.target.value === 'not_available' ? 'not_available' : parseInt(e.target.value, 10) })
                     }
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
+                    <option value={14}>Over 12 months (+10 pts)</option>
+                    <option value={8}>6–12 months (+6 pts)</option>
+                    <option value={4}>3–6 months (+3 pts)</option>
                     <option value={2}>Under 3 months (0 pts)</option>
-                    <option value={4}>3–6 months (3 pts)</option>
-                    <option value={8}>6–12 months (6 pts)</option>
-                    <option value={14}>Over 12 months (10 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold">
@@ -1555,19 +1668,18 @@ export const NewEvaluation: React.FC = () => {
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.wallet_inflow_months_of_12 || 10}
+                    value={parameterInputs.wallet_inflow_months_of_12 ?? 10}
                     onChange={(e) =>
-                      setParameterInputs({
-                        ...parameterInputs,
-                        wallet_inflow_months_of_12: parseInt(e.target.value, 10),
-                      })
+                      setParameterInputs({ ...parameterInputs, wallet_inflow_months_of_12: e.target.value === 'not_available' ? 'not_available' : parseInt(e.target.value, 10) })
                     }
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
+                    <option value={10}>10–12 months (+10 pts)</option>
+                    <option value={8}>7–9 months (+6 pts)</option>
+                    <option value={5}>4–6 months (+3 pts)</option>
                     <option value={2}>0–3 months (0 pts)</option>
-                    <option value={5}>4–6 months (3 pts)</option>
-                    <option value={8}>7–9 months (6 pts)</option>
-                    <option value={10}>10–12 months (10 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold">
@@ -1584,16 +1696,18 @@ export const NewEvaluation: React.FC = () => {
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.avg_monthly_inflow_kz || 120000}
+                    value={parameterInputs.avg_monthly_inflow_kz ?? 120000}
                     onChange={(e) =>
-                      setParameterInputs({ ...parameterInputs, avg_monthly_inflow_kz: parseInt(e.target.value, 10) })
+                      setParameterInputs({ ...parameterInputs, avg_monthly_inflow_kz: e.target.value === 'not_available' ? 'not_available' : parseInt(e.target.value, 10) })
                     }
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
-                    <option value={15000}>Under 20,000 Kz (2 pts)</option>
-                    <option value={50000}>20,000–80,000 Kz (5 pts)</option>
-                    <option value={120000}>80,000–200,000 Kz (8 pts)</option>
-                    <option value={250000}>Over 200,000 Kz (10 pts)</option>
+                    <option value={250000}>Over 200,000 Kz (+10 pts)</option>
+                    <option value={120000}>80,000–200,000 Kz (+8 pts)</option>
+                    <option value={50000}>20,000–80,000 Kz (+5 pts)</option>
+                    <option value={15000}>Under 20,000 Kz (+2 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold">
@@ -1610,15 +1724,17 @@ export const NewEvaluation: React.FC = () => {
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.bill_payments_via_wallet || 'sometimes'}
+                    value={parameterInputs.bill_payments_via_wallet ?? 'sometimes'}
                     onChange={(e) =>
                       setParameterInputs({ ...parameterInputs, bill_payments_via_wallet: e.target.value })
                     }
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
+                    <option value="regular">Regular (+10 pts)</option>
+                    <option value="sometimes">Sometimes (+5 pts)</option>
                     <option value="none">None (0 pts)</option>
-                    <option value="sometimes">Sometimes (5 pts)</option>
-                    <option value="regular">Regular (10 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold">
@@ -1640,15 +1756,17 @@ export const NewEvaluation: React.FC = () => {
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.account_age_months || 48}
+                    value={parameterInputs.account_age_months ?? 48}
                     onChange={(e) =>
-                      setParameterInputs({ ...parameterInputs, account_age_months: parseInt(e.target.value, 10) })
+                      setParameterInputs({ ...parameterInputs, account_age_months: e.target.value === 'not_available' ? 'not_available' : parseInt(e.target.value, 10) })
                     }
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
-                    <option value={4}>Under 6 months (2 pts)</option>
-                    <option value={18}>6–24 months (5 pts)</option>
-                    <option value={48}>Over 24 months (10 pts)</option>
+                    <option value={48}>Over 24 months (+10 pts)</option>
+                    <option value={18}>6–24 months (+5 pts)</option>
+                    <option value={4}>Under 6 months (+2 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-semibold">
@@ -1665,15 +1783,17 @@ export const NewEvaluation: React.FC = () => {
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.credits_months_of_12 || 10}
+                    value={parameterInputs.credits_months_of_12 ?? 10}
                     onChange={(e) =>
-                      setParameterInputs({ ...parameterInputs, credits_months_of_12: parseInt(e.target.value, 10) })
+                      setParameterInputs({ ...parameterInputs, credits_months_of_12: e.target.value === 'not_available' ? 'not_available' : parseInt(e.target.value, 10) })
                     }
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
+                    <option value={10}>9–12 months (+10 pts)</option>
+                    <option value={6}>4–8 months (+5 pts)</option>
                     <option value={2}>0–3 months (0 pts)</option>
-                    <option value={6}>4–8 months (5 pts)</option>
-                    <option value={10}>9–12 months (10 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-semibold">
@@ -1692,14 +1812,16 @@ export const NewEvaluation: React.FC = () => {
                   <select
                     value={parameterInputs.returned_payments_12m ?? 0}
                     onChange={(e) =>
-                      setParameterInputs({ ...parameterInputs, returned_payments_12m: parseInt(e.target.value, 10) })
+                      setParameterInputs({ ...parameterInputs, returned_payments_12m: e.target.value === 'not_available' ? 'not_available' : parseInt(e.target.value, 10) })
                     }
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
-                    <option value={0}>0 returned (10 pts)</option>
-                    <option value={1}>1–2 returned (6 pts)</option>
-                    <option value={4}>3–5 returned (2 pts)</option>
+                    <option value={0}>0 returned (+10 pts)</option>
+                    <option value={1}>1–2 returned (+6 pts)</option>
+                    <option value={4}>3–5 returned (+2 pts)</option>
                     <option value={6}>6 or more (0 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-semibold">
@@ -1721,14 +1843,16 @@ export const NewEvaluation: React.FC = () => {
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.utility_bills_on_time || 'mostly'}
+                    value={parameterInputs.utility_bills_on_time ?? 'mostly'}
                     onChange={(e) => setParameterInputs({ ...parameterInputs, utility_bills_on_time: e.target.value })}
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
-                    <option value="always">Always on time (10 pts)</option>
-                    <option value="mostly">Mostly on time (7 pts)</option>
-                    <option value="sometimes">Sometimes (4 pts)</option>
+                    <option value="always">Always on time (+10 pts)</option>
+                    <option value="mostly">Mostly on time (+7 pts)</option>
+                    <option value="sometimes">Sometimes (+4 pts)</option>
                     <option value="none">None / Skipped (0 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-semibold">
@@ -1745,13 +1869,15 @@ export const NewEvaluation: React.FC = () => {
                     </span>
                   </div>
                   <select
-                    value={parameterInputs.nif_standing || 'regular'}
+                    value={parameterInputs.nif_standing ?? 'regular'}
                     onChange={(e) => setParameterInputs({ ...parameterInputs, nif_standing: e.target.value })}
+                    onBlur={() => saveDraftSnapshot()}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                   >
-                    <option value="regular">Regular / In order (10 pts)</option>
-                    <option value="irregular">Irregular (3 pts)</option>
+                    <option value="regular">Regular / In order (+10 pts)</option>
+                    <option value="irregular">Irregular (+3 pts)</option>
                     <option value="none">No record (0 pts)</option>
+                    <option value="not_available">Not available (0 pts)</option>
                   </select>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-semibold">
@@ -1763,20 +1889,23 @@ export const NewEvaluation: React.FC = () => {
             )}
           </div>
 
-          {/* Navigation */}
-          <div className="flex justify-between items-center pt-2">
+          {/* Sequential Block Navigation */}
+          <div className="flex justify-between items-center pt-2 border-t border-slate-100">
             <button
-              onClick={() => goToStep(2)}
-              className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5"
+              type="button"
+              onClick={handlePrevBlock}
+              className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Segment</span>
+              <span>{backButtonLabel}</span>
             </button>
             <button
-              onClick={() => goToStep(4)}
-              className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center gap-2"
+              type="button"
+              onClick={handleNextBlock}
+              disabled={!isBlockComplete(activeBlock)}
+              className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
             >
-              <span>Continue to Assets & Income</span>
+              <span>{nextButtonLabel}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -2042,123 +2171,110 @@ export const NewEvaluation: React.FC = () => {
               </div>
             </div>
 
-            {/* Middle: Horizontal Coloured Bars per Block */}
+            {/* Middle: Horizontal Coloured Bars per Block (Always All 6 Rows) */}
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
               <span className="text-xs font-black text-ink uppercase tracking-wider block">
                 Points per Block
               </span>
 
               <div className="space-y-2">
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="font-semibold text-slate-700">Personal (P)</span>
-                    <span className="font-mono font-bold text-ink">
-                      {Math.round(liveScoringResult.blockScores.P.earnedPoints)} of {liveScoringResult.blockScores.P.effectivePoints} pts
+                {[
+                  {
+                    code: 'P',
+                    name: 'Personal (P)',
+                    earned: Math.round(liveScoringResult.blockScores.P.earnedPoints),
+                    max: liveScoringResult.blockScores.P.effectivePoints,
+                    status: liveScoringResult.blockScores.P.status,
+                    barColor: 'bg-slate-600',
+                  },
+                  {
+                    code: 'T',
+                    name: 'Telecom (T)',
+                    earned: Math.round(liveScoringResult.blockScores.T.earnedPoints),
+                    max: liveScoringResult.blockScores.T.effectivePoints,
+                    status: liveScoringResult.blockScores.T.status,
+                    barColor: 'bg-teal-600',
+                  },
+                  {
+                    code: 'W',
+                    name: 'Wallet (W)',
+                    earned: Math.round(liveScoringResult.blockScores.W.earnedPoints),
+                    max: liveScoringResult.blockScores.W.effectivePoints,
+                    status: !walletAvailable ? 'skipped' : liveScoringResult.blockScores.W.status,
+                    barColor: 'bg-purple-600',
+                  },
+                  {
+                    code: 'B',
+                    name: 'Bank (B)',
+                    earned: Math.round(liveScoringResult.blockScores.B.earnedPoints),
+                    max: liveScoringResult.blockScores.B.effectivePoints,
+                    status: liveScoringResult.blockScores.B.status,
+                    barColor: 'bg-blue-700',
+                  },
+                  {
+                    code: 'X',
+                    name: 'Alternative (X)',
+                    earned: Math.round(liveScoringResult.blockScores.X.earnedPoints),
+                    max: liveScoringResult.blockScores.X.effectivePoints,
+                    status: liveScoringResult.blockScores.X.status,
+                    barColor: 'bg-amber-600',
+                  },
+                  {
+                    code: 'assets',
+                    name: 'Assets (bonus)',
+                    earned: liveScoringResult.assetBonus,
+                    max: 6,
+                    status: 'complete',
+                    barColor: 'bg-green-600',
+                  },
+                ].map((row) => {
+                  const isNotUsed = row.max === 0 || row.status === 'not_used';
+                  const isNil = row.status === 'nil';
+                  const isSkipped = row.status === 'skipped';
+                  const pct = isNotUsed || isNil || isSkipped ? 0 : Math.min(100, (row.earned / (row.max || 1)) * 100);
+
+                  return (
+                    <div key={row.code}>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-slate-700">{row.name}</span>
+                          {isNil ? (
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-red-100 text-red-700 font-bold">
+                              Nil
+                            </span>
+                          ) : isSkipped ? (
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-bold">
+                              Skipped
+                            </span>
+                          ) : isNotUsed ? (
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-200 text-slate-500 font-semibold">
+                              Not used
+                            </span>
+                          ) : null}
+                        </div>
+                        <span className="font-mono font-bold text-ink">
+                          {row.earned} / {row.max}
+                        </span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${row.barColor}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="pt-2 border-t border-slate-200 flex flex-col gap-0.5">
+                  <div className="flex justify-between text-xs font-black">
+                    <span className="text-ink">Total</span>
+                    <span className="font-mono text-orange-600">
+                      {Math.round(liveScoringResult.totalPoints)} / 100
                     </span>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
-                    <div
-                      className="h-full bg-slate-600 rounded-full"
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          (liveScoringResult.blockScores.P.earnedPoints / (liveScoringResult.blockScores.P.effectivePoints || 1)) * 100
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="font-semibold text-teal-800">Telecom (T)</span>
-                    <span className="font-mono font-bold text-ink">
-                      {Math.round(liveScoringResult.blockScores.T.earnedPoints)} of {liveScoringResult.blockScores.T.effectivePoints} pts
-                    </span>
-                  </div>
-                  <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
-                    <div
-                      className="h-full bg-teal-600 rounded-full"
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          (liveScoringResult.blockScores.T.earnedPoints / (liveScoringResult.blockScores.T.effectivePoints || 1)) * 100
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {liveScoringResult.blockScores.W.effectivePoints > 0 && (
-                  <div>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="font-semibold text-purple-800">Wallet (W)</span>
-                      <span className="font-mono font-bold text-ink">
-                        {Math.round(liveScoringResult.blockScores.W.earnedPoints)} of {liveScoringResult.blockScores.W.effectivePoints} pts
-                      </span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
-                      <div
-                        className="h-full bg-purple-600 rounded-full"
-                        style={{
-                          width: `${Math.min(
-                            100,
-                            (liveScoringResult.blockScores.W.earnedPoints / (liveScoringResult.blockScores.W.effectivePoints || 1)) * 100
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {liveScoringResult.blockScores.B.effectivePoints > 0 && (
-                  <div>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="font-semibold text-blue-800">Bank (B)</span>
-                      <span className="font-mono font-bold text-ink">
-                        {Math.round(liveScoringResult.blockScores.B.earnedPoints)} of {liveScoringResult.blockScores.B.effectivePoints} pts
-                      </span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
-                      <div
-                        className="h-full bg-blue-700 rounded-full"
-                        style={{
-                          width: `${Math.min(
-                            100,
-                            (liveScoringResult.blockScores.B.earnedPoints / (liveScoringResult.blockScores.B.effectivePoints || 1)) * 100
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {liveScoringResult.blockScores.X.effectivePoints > 0 && (
-                  <div>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="font-semibold text-amber-800">Alternative (X)</span>
-                      <span className="font-mono font-bold text-ink">
-                        {Math.round(liveScoringResult.blockScores.X.earnedPoints)} of {liveScoringResult.blockScores.X.effectivePoints} pts
-                      </span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
-                      <div
-                        className="h-full bg-amber-600 rounded-full"
-                        style={{
-                          width: `${Math.min(
-                            100,
-                            (liveScoringResult.blockScores.X.earnedPoints / (liveScoringResult.blockScores.X.effectivePoints || 1)) * 100
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-2 border-t border-slate-200 flex justify-between text-xs font-bold">
-                  <span className="text-ink">Total Base Points</span>
-                  <span className="font-mono text-orange-600">
-                    {Math.round(liveScoringResult.totalPoints)} / 100 pts
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    No data scores Nil.
                   </span>
                 </div>
               </div>
@@ -2167,22 +2283,39 @@ export const NewEvaluation: React.FC = () => {
             {/* Right: Plain Words Reasons */}
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
               <span className="text-xs font-black text-ink uppercase tracking-wider block">
-                Top 3 Positive Reasons
+                Top 3 Reasons
               </span>
 
               <div className="space-y-2">
-                {liveScoringResult.positiveReasons.slice(0, 3).map((reason, idx) => (
-                  <div key={idx} className="flex items-start gap-2 p-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700">
-                    <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
-                    <span>{reason}</span>
-                  </div>
-                ))}
+                {liveScoringResult.positiveReasons.slice(0, 3).map((reason, idx) => {
+                  const isGap =
+                    reason.toLowerCase().includes('0 of') ||
+                    reason.toLowerCase().includes('no ') ||
+                    reason.toLowerCase().includes('switched off');
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex items-start gap-2 p-2 rounded-lg border text-xs ${
+                        isGap
+                          ? 'bg-amber-50/70 border-amber-200 text-amber-900'
+                          : 'bg-white border-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {isGap ? (
+                        <AlertOctagon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+                      )}
+                      <span>{reason}</span>
+                    </div>
+                  );
+                })}
               </div>
 
-              {liveScoringResult.dataCoverageScore < 100 && (
-                <div className="p-2.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-800 text-[11px] font-medium flex items-center gap-1.5">
-                  <Info className="w-3.5 h-3.5 shrink-0" />
-                  <span>Missing data did not lower the score.</span>
+              {liveScoringResult.dataGaps && liveScoringResult.dataGaps.length > 0 && (
+                <div className="p-2.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-medium flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 shrink-0 text-slate-500" />
+                  <span>No data scores Nil. Missing records lower the evaluation score.</span>
                 </div>
               )}
             </div>

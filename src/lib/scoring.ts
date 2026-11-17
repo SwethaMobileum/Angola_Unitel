@@ -55,13 +55,37 @@ export interface ParameterScoreDetail {
 export interface BlockScoreDetail {
   blockCode: BlockCode;
   basePoints: number;        // configured points before redistribution
-  effectivePoints: number;   // points after redistribution (sum of all blocks = 94)
+  effectivePoints: number;   // fixed block maximum points (sum of all blocks = 94)
   earnedPoints: number;      // effectivePoints * blockStrength
   blockStrength: number;     // 0.0 .. 1.0 (weighted average of valid parameters)
   hasData: boolean;
   availableParamsCount: number;
   totalConfiguredParams: number;
+  status?: 'complete' | 'nil' | 'skipped' | 'not_used';
   parameters: ParameterScoreDetail[];
+}
+
+export interface ScoreBandColor {
+  bg: string;
+  text: string;
+  border?: string;
+  label?: string;
+}
+
+/**
+ * Universal Evaluation Colours (Change Request v3)
+ * >= 700: DARK green #157A4B (white text)
+ * 600 - 699: LIGHT green #8BD3A8 (dark text #0F4A2C for AA contrast)
+ * < 600: RED #C8372D (white text)
+ */
+export function getScoreBandColors(score: number): ScoreBandColor {
+  if (score >= 700) {
+    return { bg: '#157A4B', text: '#FFFFFF', border: '#0F5B37', label: 'Good' };
+  }
+  if (score >= 600) {
+    return { bg: '#8BD3A8', text: '#0F4A2C', border: '#6BBF8C', label: 'Acceptable' };
+  }
+  return { bg: '#C8372D', text: '#FFFFFF', border: '#A6261E', label: 'High risk' };
 }
 
 export interface RedistributionRecord {
@@ -202,12 +226,16 @@ export const DEFAULT_POINT_RULES: Record<string, PointRule[]> = {
     { parameter_key: 'active_days_per_month', option_key: 'irregular', label: 'Irregular (< 10d)', points: 2 },
   ],
   airtime_loan_repayment: [
-    { parameter_key: 'airtime_loan_repayment', option_key: '100%_repaid', label: 'On time 100%', points: 10 },
+    { parameter_key: 'airtime_loan_repayment', option_key: '100%_repaid', label: '100%', points: 10 },
     { parameter_key: 'airtime_loan_repayment', option_key: '80_99%_repaid', label: '80–99%', points: 7 },
+    { parameter_key: 'airtime_loan_repayment', option_key: '80-99%_repaid', label: '80–99%', points: 7 },
     { parameter_key: 'airtime_loan_repayment', option_key: '50_79%_repaid', label: '50–79%', points: 3 },
-    { parameter_key: 'airtime_loan_repayment', option_key: 'under_50%', label: '< 50%', points: 0 },
+    { parameter_key: 'airtime_loan_repayment', option_key: '50-79%_repaid', label: '50–79%', points: 3 },
+    { parameter_key: 'airtime_loan_repayment', option_key: 'under_50%', label: 'Under 50%', points: 0 },
+    { parameter_key: 'airtime_loan_repayment', option_key: 'under_50%_repaid', label: 'Under 50%', points: 0 },
     { parameter_key: 'airtime_loan_repayment', option_key: 'defaulted_often', label: 'Defaulted often', points: 0 },
-    { parameter_key: 'airtime_loan_repayment', option_key: 'none', label: 'No loan taken (skip)', points: -1 },
+    { parameter_key: 'airtime_loan_repayment', option_key: 'none_borrowed', label: 'None borrowed', points: -1 },
+    { parameter_key: 'airtime_loan_repayment', option_key: 'none', label: 'None borrowed', points: -1 },
     { parameter_key: 'airtime_loan_repayment', option_key: 'skip', label: 'Skip', points: -1 },
   ],
 
@@ -409,7 +437,18 @@ export function evaluateParameterPoints(
       maxPossiblePoints: maxPossible,
       hasData: false,
       isSkipped: true,
-      matchedLabel: 'Not available',
+      matchedLabel: 'Skipped',
+    };
+  }
+
+  // Explicit 'Not available' selection (0 points, lowers score)
+  if (rawValue === 'not_available') {
+    return {
+      earnedPoints: 0,
+      maxPossiblePoints: maxPossible,
+      hasData: true,
+      isSkipped: false,
+      matchedLabel: 'Not available (0 pts)',
     };
   }
 
@@ -540,13 +579,6 @@ export function calculateCreditScore(
     baseWeightsByBlock[w.block_code as BlockCode] = w.points;
   });
 
-  // Determine segment's designated primary (main) block
-  const mainWeightEntry = segmentWeights.reduce(
-    (prev, curr) => (curr.points > prev.points ? curr : prev),
-    segmentWeights[0]
-  );
-  const designatedMainBlock: BlockCode = mainWeightEntry?.block_code || 'T';
-
   // 2. Evaluate parameter points per block
   const blockDetails: Record<BlockCode, BlockScoreDetail> = {
     P: { blockCode: 'P', basePoints: baseWeightsByBlock.P, effectivePoints: baseWeightsByBlock.P, earnedPoints: 0, blockStrength: 0, hasData: false, availableParamsCount: 0, totalConfiguredParams: 0, parameters: [] },
@@ -558,7 +590,6 @@ export function calculateCreditScore(
   };
 
   const configuredParams = DEFAULT_PARAMETERS.filter(p => p.block_code !== 'A');
-  let hadAnyMissingData = false;
 
   for (const blockCode of blockCodes) {
     const blockParams = configuredParams.filter(p => p.block_code === blockCode);
@@ -650,92 +681,70 @@ export function calculateCreditScore(
         availableCount++;
         pointsEarnedSum += ptEval.earnedPoints;
         pointsPossibleSum += ptEval.maxPossiblePoints;
-      } else {
-        hadAnyMissingData = true;
       }
     }
 
     detail.availableParamsCount = availableCount;
 
     // Check if block has valid data
-    if (blockCode === 'W' && !walletAvailable) {
+    // A block with NO data at all (no record and nothing entered, or all "Not available") earns 0 and is shown as "Nil".
+    const hasEnteredData = blockParams.some(p => {
+      const raw = getInputValue(p.key, parameterInputs);
+      return raw !== undefined && raw !== null && raw !== '' && raw !== 'not_available' && raw !== 'skip' && raw !== 'none';
+    });
+
+    if (baseWeightsByBlock[blockCode] === 0) {
       detail.hasData = false;
       detail.blockStrength = 0;
-    } else if (availableCount > 0 && pointsPossibleSum > 0) {
+      detail.earnedPoints = 0;
+      detail.status = 'not_used';
+    } else if (blockCode === 'W' && !walletAvailable) {
+      detail.hasData = false;
+      detail.blockStrength = 0;
+      detail.earnedPoints = 0;
+      detail.status = 'skipped';
+    } else if (hasEnteredData && pointsPossibleSum > 0) {
       detail.hasData = true;
       let calculatedStrength = Math.min(1.0, Math.max(0.0, pointsEarnedSum / pointsPossibleSum));
 
       // Behavioral Integrity: SIM tenure alone cannot give high telecom score without confirmed recharge activity
       const topupVal = parameterInputs['topup_months_of_12'] ?? parameterInputs['topup_regularity_months'];
-      if (blockCode === 'T' && (topupVal === undefined || topupVal === null || topupVal === '')) {
+      if (blockCode === 'T' && (topupVal === undefined || topupVal === null || topupVal === '' || topupVal === 'not_available')) {
         calculatedStrength = Math.min(0.30, calculatedStrength);
       }
 
       detail.blockStrength = calculatedStrength;
+      detail.earnedPoints = Math.round(calculatedStrength * detail.effectivePoints * 10) / 10;
+      detail.status = 'complete';
     } else {
       detail.hasData = false;
       detail.blockStrength = 0;
+      detail.earnedPoints = 0;
+      detail.status = 'nil';
     }
   }
 
-  // 3. Dynamic Point Redistribution
-  // Blocks with configured base points > 0 that have NO data (or W when wallet is off)
-  // move their points proportionally to blocks with data, giving priority to the main block.
+  // 3. Dynamic Point Redistribution REMOVED (Change Request v3 rule: missing data lowers score)
+  // Each block's maximum is the fixed block points for the segment. Sum of base blocks = 94 (+6 assets bonus = 100).
   const redistributions: RedistributionRecord[] = [];
+  for (const b of blockCodes) {
+    blockDetails[b].effectivePoints = baseWeightsByBlock[b];
+  }
 
   const blocksWithData = blockCodes.filter(b => blockDetails[b].hasData && (b !== 'W' || walletAvailable));
-  const blocksNeedingRedistribution = blockCodes.filter(
-    b => baseWeightsByBlock[b] > 0 && (!blockDetails[b].hasData || (b === 'W' && !walletAvailable))
-  );
-
-  if (blocksNeedingRedistribution.length > 0 && blocksWithData.length > 0) {
-    for (const emptyBlock of blocksNeedingRedistribution) {
-      const pointsToMove = baseWeightsByBlock[emptyBlock];
-      if (pointsToMove <= 0) continue;
-
-      let targetBlock: BlockCode;
-      if (blocksWithData.includes(designatedMainBlock) && designatedMainBlock !== emptyBlock) {
-        targetBlock = designatedMainBlock;
-      } else {
-        const behavioralBlocks = blocksWithData.filter(b => b !== 'P');
-        if (behavioralBlocks.length > 0) {
-          targetBlock = behavioralBlocks.reduce(
-            (prev, curr) => (baseWeightsByBlock[curr] > baseWeightsByBlock[prev] ? curr : prev),
-            behavioralBlocks[0]
-          );
-        } else {
-          targetBlock = 'P';
-        }
-      }
-
-      blockDetails[emptyBlock].effectivePoints = 0;
-      blockDetails[targetBlock].effectivePoints += pointsToMove;
-
-      redistributions.push({
-        fromBlock: emptyBlock,
-        toBlock: targetBlock,
-        points: pointsToMove,
-        reason: emptyBlock === 'W' && !walletAvailable
-          ? 'Wallet scoring switched off; points redistributed to maintain 94 base point invariant.'
-          : `Block ${emptyBlock} has no input data; points moved to primary active block ${targetBlock} without penalty.`,
-      });
-    }
-  }
 
   // 4. Earned Points & Asset Bonus
   let basePointsEarned = 0;
   for (const b of blockCodes) {
-    const detail = blockDetails[b];
-    detail.earnedPoints = detail.effectivePoints * detail.blockStrength;
-    basePointsEarned += detail.earnedPoints;
+    basePointsEarned += blockDetails[b].earnedPoints;
   }
 
   const assetBonus = calculateAssetBonus(assets);
-  const totalPoints = Math.min(100, Math.max(0, basePointsEarned + assetBonus));
+  const totalPoints = Math.min(100, Math.max(0, Math.round((basePointsEarned + assetBonus) * 10) / 10));
 
   // 5. Calculate Score (300 .. 900)
-  // Formula: round(300 + (totalPoints / 100) * 600)
-  const score = Math.round(300 + (totalPoints / 100) * 600);
+  // Formula: Score = 300 + Math.round(totalPoints * 6)
+  const score = Math.min(900, Math.max(300, 300 + Math.round(totalPoints * 6)));
 
   // Match Score Band
   const scoreBand = DEFAULT_SCORE_BANDS.find(sb => score >= sb.min_score && score <= sb.max_score)
@@ -894,9 +903,21 @@ export function calculateCreditScore(
     };
   }
 
-  // 10. Generate Top 3 Reasons in Plain Words
+  // 10. Generate Top 3 Reasons in Plain Words & Plain Data Gaps
   const positiveReasons: string[] = [];
   const dataGaps: string[] = [];
+
+  for (const b of blockCodes) {
+    if (baseWeightsByBlock[b] > 0) {
+      const bDetail = blockDetails[b];
+      const blockName = b === 'P' ? 'Personal' : b === 'T' ? 'Telecom' : b === 'W' ? 'Wallet' : b === 'B' ? 'Bank' : 'Alternative';
+      if (b === 'W' && !walletAvailable) {
+        dataGaps.push(`Wallet switched off: 0 of ${baseWeightsByBlock[b]} points`);
+      } else if (bDetail.status === 'nil') {
+        dataGaps.push(`No ${blockName.toLowerCase()} record: 0 of ${baseWeightsByBlock[b]} points`);
+      }
+    }
+  }
 
   if (simTenureMonths >= 24) {
     positiveReasons.push(`Longstanding mobile subscriber loyalty (${simTenureMonths} months tenure).`);
@@ -921,15 +942,17 @@ export function calculateCreditScore(
     positiveReasons.push(`Tangible residential or vehicle asset bonus added (+${assetBonus} pts).`);
   }
 
-  // Ensure up to 3 reasons
-  if (positiveReasons.length < 3) {
-    positiveReasons.push('Verified national identity registry match with active SIM ownership.');
+  // Combine positive reasons and data gaps to show full picture
+  const combinedReasons = [...positiveReasons];
+  if (dataGaps.length > 0) {
+    combinedReasons.push(...dataGaps);
+  }
+  if (combinedReasons.length < 3) {
+    combinedReasons.push('Verified national identity registry match with active SIM ownership.');
   }
 
-  const finalTop3Reasons = positiveReasons.slice(0, 3);
-  const missingDataNote = hadAnyMissingData || redistributions.length > 0
-    ? 'Missing data did not lower the score.'
-    : undefined;
+  const finalTop3Reasons = combinedReasons.slice(0, 3);
+  const missingDataNote = dataGaps.length > 0 ? 'No data scores Nil.' : undefined;
 
   return {
     segmentCode,

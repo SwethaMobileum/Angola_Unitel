@@ -72,19 +72,19 @@ export const Segments: React.FC = () => {
       shortDesc: 'Collect only parameters that this segment realistically has.',
       details: [
         'Dynamic form renders only the blocks relevant to the customer segment.',
-        'Inputs left blank or marked "not available" are skipped (NEVER penalized as zero).',
+        'Explicit "not available" or unrecorded blocks score 0 (Nil). Individual unapplicable parameters like "None borrowed" are skipped inside the block.',
         'Device type (button vs smartphone) and ROSCA/Kixikila membership are stored for context with weight 0 (excluded from score average).',
       ],
-      ruleNote: 'Core Principle: Customers move money differently (cash, USSD, apps, banks, agents). Missing channels are never a penalty.',
+      ruleNote: 'Core Principle: Missing data lowers the score. Fixed 100-point model with no point redistribution across blocks.',
     },
     {
       step: 4,
       title: 'Score & Confidence',
       icon: Calculator,
-      shortDesc: 'Calculate 300–900 score, dynamic redistribution, and data confidence.',
+      shortDesc: 'Calculate 300–900 score on fixed 100-point model with Nil scoring and data confidence.',
       details: [
         'Parameter strengths (0..1) aggregate into weighted block strengths, multiplied by block points.',
-        'Dynamic Redistribution: If a block has no data (or wallet is off), its points move proportionally to active behavioral blocks, prioritizing the main block.',
+        'Nil Scoring: A block with no data or marked "Not available" earns 0 points and displays as Nil. Wallet switched off displays as Skipped. Block maximums remain fixed adding to 100.',
         'Physical Assets Bonus: Declared house (+2), land title (+1), two-wheeler (+1), or car (+2) add up to +6 bonus points. "No" and "Skip" add 0 and never subtract.',
         'Credit Score formula: round(300 + (totalPoints / 100) * 600), mapped into 5 risk bands (300 to 900).',
         'Data Confidence: High (>=3 blocks, >=12m tenure), Medium (2 blocks or 6-12m), Low (1 block or <6m; caps limit at Starter).',

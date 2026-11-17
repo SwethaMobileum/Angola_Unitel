@@ -1,4 +1,5 @@
 import React from 'react';
+import { getScoreBandColors } from '../lib/scoring';
 
 interface ScoreGaugeProps {
   score: number; // 300 .. 900
@@ -25,19 +26,12 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({
   const arcLength = Math.PI * radius;
   const strokeDashoffset = arcLength - normalizedPct * arcLength;
 
-  // Determine color based on score band using corporate tokens
-  let scoreColor = '#F26B1D'; // Orange default
-  if (clampedScore >= 800) {
-    scoreColor = '#22A06B'; // Green (800-900)
-  } else if (clampedScore >= 700) {
-    scoreColor = '#14808A'; // Teal (700-799)
-  } else if (clampedScore >= 600) {
-    scoreColor = '#D14F00'; // Deep Orange / Acceptable (600-699)
-  } else if (clampedScore >= 500) {
-    scoreColor = '#F26B1D'; // Orange (500-599)
-  } else {
-    scoreColor = '#C8372D'; // Red (300-499)
-  }
+  // Determine color based on score band (Change Request v3)
+  // >= 700: Dark Green #157A4B
+  // 600-699: Light Green #8BD3A8 with dark text #0F4A2C
+  // < 600: Red #C8372D
+  const bandColors = getScoreBandColors(clampedScore);
+  const scoreTextColor = clampedScore >= 600 && clampedScore < 700 ? '#0F4A2C' : bandColors.bg;
 
   return (
     <div className={`flex flex-col items-center justify-center ${className}`}>
@@ -61,7 +55,7 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({
           <path
             d={`M ${strokeWidth} ${size / 2} A ${radius} ${radius} 0 0 1 ${size - strokeWidth} ${size / 2}`}
             fill="none"
-            stroke={scoreColor}
+            stroke={bandColors.bg}
             strokeWidth={strokeWidth}
             strokeDasharray={arcLength}
             strokeDashoffset={strokeDashoffset}
@@ -72,13 +66,13 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({
 
         {/* Inside Arc: Score Number & Status Badge with Clean Breathing Room */}
         <div className="absolute inset-x-0 top-6 flex flex-col items-center justify-start text-center pointer-events-none">
-          <span className="text-3xl font-black font-mono tracking-tight" style={{ color: scoreColor }}>
+          <span className="text-3xl font-black font-mono tracking-tight" style={{ color: scoreTextColor }}>
             {clampedScore}
           </span>
           {bandLabel && (
             <span
-              className="mt-1.5 px-3 py-0.5 rounded-full text-[11px] font-extrabold text-white shadow-xs"
-              style={{ backgroundColor: scoreColor }}
+              className="mt-1.5 px-3 py-0.5 rounded-full text-[11px] font-extrabold shadow-xs"
+              style={{ backgroundColor: bandColors.bg, color: bandColors.text }}
             >
               {bandLabel}
             </span>
