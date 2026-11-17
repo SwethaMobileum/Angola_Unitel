@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { COPY } from '../copy/en';
 import { Evaluation, LoanApplication } from '../types';
 import { getStoredEvaluations } from '../lib/evaluations';
 import { getStoredApplications } from '../lib/loans';
+import { useSyncDatabase } from '../lib/syncClient';
 import { DEFAULT_SEGMENTS } from '../data/seedData';
 import { formatKz } from '../lib/money';
 import {
@@ -12,14 +12,13 @@ import {
   CheckCircle2,
   TrendingUp,
   AlertTriangle,
-  Plus,
   ArrowRight,
-  ShieldCheck,
   Smartphone,
   CreditCard,
   ChevronRight,
 } from 'lucide-react';
 import { StatusChip } from '../components/StatusChip';
+import { PageHeader } from '../components/PageHeader';
 import {
   ResponsiveContainer,
   BarChart,
@@ -33,7 +32,7 @@ import {
 } from 'recharts';
 
 export const Dashboard: React.FC = () => {
-  const { role, currentUser } = useAuth();
+  const { role } = useAuth();
   const navigate = useNavigate();
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [applications, setApplications] = useState<LoanApplication[]>([]);
@@ -44,10 +43,15 @@ export const Dashboard: React.FC = () => {
     setApplications(getStoredApplications());
   }, []);
 
+  useSyncDatabase(() => {
+    setEvaluations(getStoredEvaluations());
+    setApplications(getStoredApplications());
+  });
+
   // Compute Core Metrics
   const totalEvals = evaluations.length;
   const totalApps = applications.length;
-  const approvedApps = applications.filter((a) => a.status === 'approved');
+  const approvedApps = applications.filter((a) => a.status === 'approved' || a.status === 'purchased');
   const rejectedApps = applications.filter((a) => a.status === 'rejected');
   const totalDecided = approvedApps.length + rejectedApps.length;
   const approvalRate = totalDecided > 0 ? Math.round((approvedApps.length / totalDecided) * 100) : 100;
@@ -82,11 +86,11 @@ export const Dashboard: React.FC = () => {
   });
 
   const barChartData = [
-    { name: '300-499', label: 'High Risk', count: scoreBandCounts['High risk (300-499)'], color: '#EA580C', riskProfile: 'High risk • Maximum initial financing limit 25,000 Kz' },
-    { name: '500-599', label: 'Thin/Weak', count: scoreBandCounts['Thin/Weak (500-599)'], color: '#F97316', riskProfile: 'Thin telecom history • Standard starter cap 50,000 Kz' },
-    { name: '600-699', label: 'Acceptable', count: scoreBandCounts['Acceptable (600-699)'], color: '#0284C7', riskProfile: 'Consistent recharge habits • Standard financing up to 100,000 Kz' },
-    { name: '700-799', label: 'Good', count: scoreBandCounts['Good (700-799)'], color: '#059669', riskProfile: 'High proxy confidence • Eligible for smartphones up to 180,000 Kz' },
-    { name: '800-900', label: 'Very Good', count: scoreBandCounts['Very good (800-900)'], color: '#1F3A5F', riskProfile: 'Prime telecom profile • Maximum limit up to 250,000 Kz' },
+    { name: '300-499', label: 'High Risk', count: scoreBandCounts['High risk (300-499)'], color: '#C8372D', riskProfile: 'High risk • Maximum initial financing limit 25,000 Kz' },
+    { name: '500-599', label: 'Thin/Weak', count: scoreBandCounts['Thin/Weak (500-599)'], color: '#F26B1D', riskProfile: 'Thin telecom history • Standard starter cap 50,000 Kz' },
+    { name: '600-699', label: 'Acceptable', count: scoreBandCounts['Acceptable (600-699)'], color: '#FFB703', riskProfile: 'Consistent recharge habits • Standard financing up to 100,000 Kz' },
+    { name: '700-799', label: 'Good', count: scoreBandCounts['Good (700-799)'], color: '#14808A', riskProfile: 'High proxy confidence • Eligible for smartphones up to 180,000 Kz' },
+    { name: '800-900', label: 'Prime', count: scoreBandCounts['Very good (800-900)'], color: '#22A06B', riskProfile: 'Prime telecom profile • Maximum limit up to 250,000 Kz' },
   ];
 
   // Recharts Data: Donut Chart of Customers by Segment
@@ -167,50 +171,22 @@ export const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 w-full min-w-0">
+    <div className="space-y-4 w-full min-w-0 pb-8">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-orange-border/80 shadow-xs">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold text-navy">{COPY.nav.dashboard}</h1>
-            <span className="badge-warm font-semibold">
-              {role === 'analyst' ? 'Frontline Analyst' : role === 'approver' ? 'Credit Approver' : 'Platform Admin'}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Welcome back, <strong className="text-navy">{currentUser.full_name}</strong> &bull; Executive portfolio overview: live applications, approval metrics, risk bands, and customer segments.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          {role !== 'approver' && (
-            <Link
-              to="/new-evaluation"
-              className="btn-primary text-xs flex items-center gap-1.5 py-2.5 px-4 shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              <span>New Credit Evaluation</span>
-            </Link>
-          )}
-          {role === 'approver' && (
-            <Link
-              to="/approvals"
-              className="btn-primary text-xs flex items-center gap-1.5 py-2.5 px-4 shadow-sm"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Review Approval Queue</span>
-            </Link>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        title="Executive Dashboard"
+        helperText="Portfolio risk, segment mix, and recent approvals."
+        icon={TrendingUp}
+        badgeText={role === 'approver' ? 'Credit Approver' : 'Platform Admin'}
+      />
 
       {/* KPI Cards Row - Fully Clickable to Related Records */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 w-full">
-        {/* Tile 1: Total Applications -> /applications */}
+        {/* Tile 1: Total Applications -> /approver/queue */}
         <Link
-          to="/applications"
-          className="group card-warm p-4 bg-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 hover:border-orange transition-all duration-200 cursor-pointer block relative overflow-hidden"
-          title="Click to view all Loan Applications"
+          to="/approver/queue"
+          className="group card-warm p-4 bg-white rounded-xl border-2 border-orange hover:shadow-lg hover:-translate-y-0.5 hover:border-orange-btn transition-all duration-200 cursor-pointer block relative overflow-hidden"
+          title="Click to view all Loan Applications in Approvals Queue"
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
@@ -229,10 +205,10 @@ export const Dashboard: React.FC = () => {
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange opacity-0 group-hover:opacity-100 transition-opacity" />
         </Link>
 
-        {/* Tile 2: Total Approved -> /approvals?tab=approved */}
+        {/* Tile 2: Total Approved -> /approver/queue?tab=approved */}
         <Link
-          to="/approvals?tab=approved"
-          className="group card-warm p-4 bg-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 hover:border-emerald-500 transition-all duration-200 cursor-pointer block relative overflow-hidden"
+          to="/approver/queue?tab=approved"
+          className="group card-warm p-4 bg-white rounded-xl border-2 border-orange hover:shadow-lg hover:-translate-y-0.5 hover:border-orange-btn transition-all duration-200 cursor-pointer block relative overflow-hidden"
           title="Click to view Approved Loans Queue"
         >
           <div className="flex items-center justify-between">
@@ -254,10 +230,10 @@ export const Dashboard: React.FC = () => {
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
         </Link>
 
-        {/* Tile 3: Approval Rate -> /approvals?tab=rejected */}
+        {/* Tile 3: Approval Rate -> /approver/queue?tab=rejected */}
         <Link
-          to="/approvals?tab=rejected"
-          className="group card-warm p-4 bg-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 hover:border-orange transition-all duration-200 cursor-pointer block relative overflow-hidden"
+          to="/approver/queue?tab=rejected"
+          className="group card-warm p-4 bg-white rounded-xl border-2 border-orange hover:shadow-lg hover:-translate-y-0.5 hover:border-orange-btn transition-all duration-200 cursor-pointer block relative overflow-hidden"
           title="Click to inspect Approval Decisions"
         >
           <div className="flex items-center justify-between">
@@ -277,10 +253,10 @@ export const Dashboard: React.FC = () => {
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange opacity-0 group-hover:opacity-100 transition-opacity" />
         </Link>
 
-        {/* Tile 4: Average Proxy Score -> /evaluations */}
+        {/* Tile 4: Average Proxy Score -> /approver/evaluations */}
         <Link
-          to="/evaluations"
-          className="group card-warm p-4 bg-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 hover:border-teal-500 transition-all duration-200 cursor-pointer block relative overflow-hidden"
+          to="/approver/evaluations"
+          className="group card-warm p-4 bg-white rounded-xl border-2 border-orange hover:shadow-lg hover:-translate-y-0.5 hover:border-orange-btn transition-all duration-200 cursor-pointer block relative overflow-hidden"
           title="Click to view Subscriber Evaluations"
         >
           <div className="flex items-center justify-between">
@@ -300,10 +276,10 @@ export const Dashboard: React.FC = () => {
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-teal-500 opacity-0 group-hover:opacity-100 transition-opacity" />
         </Link>
 
-        {/* Tile 5: Thin-File Share -> /segments */}
+        {/* Tile 5: Thin-File Share -> /approver/segments */}
         <Link
-          to="/segments"
-          className="group card-warm p-4 bg-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 hover:border-amber-500 transition-all duration-200 cursor-pointer block relative overflow-hidden"
+          to="/approver/segments"
+          className="group card-warm p-4 bg-white rounded-xl border-2 border-orange hover:shadow-lg hover:-translate-y-0.5 hover:border-orange-btn transition-all duration-200 cursor-pointer block relative overflow-hidden"
           title="Click to inspect Thin-File Segments & Overlays"
         >
           <div className="flex items-center justify-between">
@@ -327,7 +303,7 @@ export const Dashboard: React.FC = () => {
       {/* Analytics Charts Grid (Recharts) with Smooth Interactive Tooltips */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 w-full">
         {/* Chart 1: Score Distribution Bar Chart */}
-        <div className="card-warm p-5 bg-white rounded-2xl shadow-xs space-y-4">
+        <div className="card-warm p-5 bg-white rounded-2xl border-2 border-orange shadow-xs space-y-4">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-bold text-navy flex items-center gap-2">
@@ -336,7 +312,7 @@ export const Dashboard: React.FC = () => {
               <p className="text-xs text-slate-500 mt-0.5">Normalized proxy credit scores (300 to 900) • Hover over bars for tier breakdown</p>
             </div>
             <Link
-              to="/evaluations"
+              to="/approver/evaluations"
               className="text-xs text-orange font-bold hover:underline flex items-center gap-1"
             >
               <span>View Evaluations</span>
@@ -356,7 +332,7 @@ export const Dashboard: React.FC = () => {
                   animationDuration={1000}
                   animationEasing="ease-out"
                   className="cursor-pointer"
-                  onClick={() => navigate('/evaluations')}
+                  onClick={() => navigate('/approver/evaluations')}
                 >
                   {barChartData.map((entry, index) => (
                     <Cell
@@ -372,7 +348,7 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Chart 2: Customer Segments Donut Chart */}
-        <div className="card-warm p-5 bg-white rounded-2xl shadow-xs space-y-4">
+        <div className="card-warm p-5 bg-white rounded-2xl border-2 border-orange shadow-xs space-y-4">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-bold text-navy flex items-center gap-2">
@@ -380,7 +356,7 @@ export const Dashboard: React.FC = () => {
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">Distribution across behavioral segments (S1–S10) • Hover over slices for profile</p>
             </div>
-            <Link to="/segments" className="text-xs text-orange font-bold hover:underline flex items-center gap-1">
+            <Link to="/approver/segments" className="text-xs text-orange font-bold hover:underline flex items-center gap-1">
               <span>View Segments</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
@@ -401,7 +377,7 @@ export const Dashboard: React.FC = () => {
                   animationDuration={1000}
                   animationEasing="ease-out"
                   className="cursor-pointer"
-                  onClick={() => navigate('/segments')}
+                  onClick={() => navigate('/approver/segments')}
                 >
                   {pieChartData.map((entry, index) => (
                     <Cell
@@ -425,13 +401,13 @@ export const Dashboard: React.FC = () => {
       {/* Recent Activity Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 w-full">
         {/* Recent Evaluations */}
-        <div className="card-warm p-5 bg-white rounded-2xl shadow-xs space-y-3">
+        <div className="card-warm p-5 bg-white rounded-2xl border-2 border-orange shadow-xs space-y-3">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <h3 className="text-sm font-bold text-navy flex items-center gap-1.5">
               <Users className="w-4 h-4 text-orange" />
               <span>Recent Subscriber Evaluations</span>
             </h3>
-            <Link to="/evaluations" className="text-xs text-orange font-bold hover:underline flex items-center gap-1">
+            <Link to="/approver/evaluations" className="text-xs text-orange font-bold hover:underline flex items-center gap-1">
               <span>View All</span>
               <ArrowRight className="w-3 h-3" />
             </Link>
@@ -441,7 +417,7 @@ export const Dashboard: React.FC = () => {
             {evaluations.slice(0, 4).map((ev) => (
               <div
                 key={ev.id}
-                onClick={() => navigate('/evaluations')}
+                onClick={() => navigate('/approver/evaluations')}
                 className="p-3 rounded-xl border border-slate-200 bg-[#FAF8F5] flex items-center justify-between text-xs hover:bg-orange-soft/40 hover:border-orange/60 transition-all cursor-pointer"
               >
                 <div>
@@ -465,13 +441,13 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Recent Applications */}
-        <div className="card-warm p-5 bg-white rounded-2xl shadow-xs space-y-3">
+        <div className="card-warm p-5 bg-white rounded-2xl border-2 border-orange shadow-xs space-y-3">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <h3 className="text-sm font-bold text-navy flex items-center gap-1.5">
               <Smartphone className="w-4 h-4 text-orange" />
               <span>Recent Equipment Loan Applications</span>
             </h3>
-            <Link to="/applications" className="text-xs text-orange font-bold hover:underline flex items-center gap-1">
+            <Link to="/approver/queue" className="text-xs text-orange font-bold hover:underline flex items-center gap-1">
               <span>View All</span>
               <ArrowRight className="w-3 h-3" />
             </Link>
@@ -481,7 +457,7 @@ export const Dashboard: React.FC = () => {
             {applications.slice(0, 4).map((app) => (
               <div
                 key={app.id}
-                onClick={() => navigate('/applications')}
+                onClick={() => navigate('/approver/queue')}
                 className="p-3 rounded-xl border border-slate-200 bg-[#FAF8F5] flex items-center justify-between text-xs hover:bg-orange-soft/40 hover:border-orange/60 transition-all cursor-pointer"
               >
                 <div>

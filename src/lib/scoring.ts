@@ -3,6 +3,7 @@ import {
   SegmentCode,
   ScoreBand,
   Parameter,
+  SegmentWeight,
 } from '../types';
 import {
   DEFAULT_WEIGHTS,
@@ -43,6 +44,8 @@ export interface ParameterScoreDetail {
   blockCode: BlockCode;
   inputValue: any;
   strength: number; // 0.0 .. 1.0
+  pointsEarned: number; // live earned points (e.g. 7)
+  maxPointsPossible: number; // max points possible for this parameter (e.g. 10)
   weight: number;
   isExcluded: boolean;
   hasValue: boolean;
@@ -93,6 +96,9 @@ export interface ScoringResult {
   assetBonus: number; // 0 .. 6
   scoreBand: ScoreBand;
   dataConfidence: 'high' | 'medium' | 'low';
+  dataCoverageScore: number; // 0 .. 100%
+  dataCoverageLabel: 'High' | 'Medium' | 'Low';
+  missingDataNote?: string;
   confidenceReasons: string[];
   blockScores: Record<BlockCode, BlockScoreDetail>;
   redistributions: RedistributionRecord[];
@@ -109,96 +115,376 @@ export interface ScoringResult {
   affordability?: AffordabilityResult;
 }
 
+export interface PointRule {
+  parameter_key: string;
+  option_key?: string;
+  min_value?: number;
+  max_value?: number;
+  label: string;
+  points: number;
+}
+
+// Canonical Points Table as specified in Section 7 of ANTIGRAVITY CHANGE PROMPT (v2)
+export const DEFAULT_POINT_RULES: Record<string, PointRule[]> = {
+  // P: Personal & Identity
+  id_sim_match: [
+    { parameter_key: 'id_sim_match', option_key: 'true', label: 'Match Verified', points: 5 },
+    { parameter_key: 'id_sim_match', option_key: 'false', label: 'Mismatch', points: 0 },
+    { parameter_key: 'id_sim_match', option_key: 'yes', label: 'Match Verified', points: 5 },
+    { parameter_key: 'id_sim_match', option_key: 'no', label: 'Mismatch', points: 0 },
+  ],
+  employment_status: [
+    { parameter_key: 'employment_status', option_key: 'formal_job', label: 'Formal job', points: 5 },
+    { parameter_key: 'employment_status', option_key: 'government', label: 'Government', points: 5 },
+    { parameter_key: 'employment_status', option_key: 'private_formal', label: 'Private corporate', points: 5 },
+    { parameter_key: 'employment_status', option_key: 'self_employed', label: 'Self-employed', points: 4 },
+    { parameter_key: 'employment_status', option_key: 'informal_business', label: 'Informal trade', points: 4 },
+    { parameter_key: 'employment_status', option_key: 'other', label: 'Other', points: 3 },
+  ],
+  time_in_activity_months: [
+    { parameter_key: 'time_in_activity_months', min_value: 0, max_value: 6, label: '< 6 months', points: 1 },
+    { parameter_key: 'time_in_activity_months', min_value: 6, max_value: 24, label: '6–24 months', points: 3 },
+    { parameter_key: 'time_in_activity_months', min_value: 24, max_value: 9999, label: '> 24 months', points: 5 },
+  ],
+
+  // T: Telecom Behaviour
+  sim_tenure_months: [
+    { parameter_key: 'sim_tenure_months', min_value: 0, max_value: 3, label: '< 3 months', points: 0 },
+    { parameter_key: 'sim_tenure_months', min_value: 3, max_value: 6, label: '3–6 months', points: 2 },
+    { parameter_key: 'sim_tenure_months', min_value: 6, max_value: 12, label: '6–12 months', points: 4 },
+    { parameter_key: 'sim_tenure_months', min_value: 12, max_value: 24, label: '12–24 months', points: 7 },
+    { parameter_key: 'sim_tenure_months', min_value: 24, max_value: 9999, label: '> 24 months', points: 10 },
+  ],
+  topup_months_of_12: [
+    { parameter_key: 'topup_months_of_12', min_value: 0, max_value: 4, label: '0–3 months', points: 0 },
+    { parameter_key: 'topup_months_of_12', min_value: 4, max_value: 7, label: '4–6 months', points: 3 },
+    { parameter_key: 'topup_months_of_12', min_value: 7, max_value: 10, label: '7–9 months', points: 6 },
+    { parameter_key: 'topup_months_of_12', min_value: 10, max_value: 13, label: '10–12 months', points: 10 },
+  ],
+  recharges_per_month: [
+    { parameter_key: 'recharges_per_month', min_value: 0, max_value: 2, label: 'Under 2', points: 2 },
+    { parameter_key: 'recharges_per_month', min_value: 2, max_value: 5, label: '2–4', points: 5 },
+    { parameter_key: 'recharges_per_month', min_value: 5, max_value: 8.001, label: '5–8', points: 8 },
+    { parameter_key: 'recharges_per_month', min_value: 8.001, max_value: 9999, label: 'Over 8', points: 10 },
+  ],
+  recharge_value_per_month_kz: [
+    { parameter_key: 'recharge_value_per_month_kz', min_value: 0, max_value: 1500, label: 'Under 1,500 Kz', points: 2 },
+    { parameter_key: 'recharge_value_per_month_kz', min_value: 1500, max_value: 3000, label: '1,500–3,000 Kz', points: 5 },
+    { parameter_key: 'recharge_value_per_month_kz', min_value: 3000, max_value: 6000, label: '3,000–6,000 Kz', points: 8 },
+    { parameter_key: 'recharge_value_per_month_kz', min_value: 6000, max_value: 999999999, label: 'Over 6,000 Kz', points: 10 },
+  ],
+  recharge_value_per_quarter_kz: [
+    { parameter_key: 'recharge_value_per_quarter_kz', min_value: 0, max_value: 4500, label: 'Under 4,500 Kz', points: 2 },
+    { parameter_key: 'recharge_value_per_quarter_kz', min_value: 4500, max_value: 9000, label: '4,500–9,000 Kz', points: 5 },
+    { parameter_key: 'recharge_value_per_quarter_kz', min_value: 9000, max_value: 18000, label: '9,000–18,000 Kz', points: 8 },
+    { parameter_key: 'recharge_value_per_quarter_kz', min_value: 18000, max_value: 999999999, label: 'Over 18,000 Kz', points: 10 },
+  ],
+  monthly_topup_kz: [
+    { parameter_key: 'monthly_topup_kz', min_value: 0, max_value: 1500, label: '< 1,500 Kz', points: 2 },
+    { parameter_key: 'monthly_topup_kz', min_value: 1500, max_value: 3000, label: '1,500–3,000 Kz', points: 5 },
+    { parameter_key: 'monthly_topup_kz', min_value: 3000, max_value: 6000, label: '3,000–6,000 Kz', points: 8 },
+    { parameter_key: 'monthly_topup_kz', min_value: 6000, max_value: 999999999, label: '> 6,000 Kz', points: 10 },
+  ],
+  spend_stability: [
+    { parameter_key: 'spend_stability', option_key: 'stable', label: 'Stable', points: 10 },
+    { parameter_key: 'spend_stability', option_key: 'growing', label: 'Growing', points: 10 },
+    { parameter_key: 'spend_stability', option_key: 'true', label: 'Stable', points: 10 },
+    { parameter_key: 'spend_stability', option_key: 'some_swings', label: 'Some swings', points: 5 },
+    { parameter_key: 'spend_stability', option_key: 'erratic', label: 'Erratic', points: 1 },
+    { parameter_key: 'spend_stability', option_key: 'false', label: 'Erratic', points: 1 },
+  ],
+  active_days_per_month: [
+    { parameter_key: 'active_days_per_month', min_value: 0, max_value: 10, label: '< 10 days', points: 2 },
+    { parameter_key: 'active_days_per_month', min_value: 10, max_value: 20, label: '10–20 days', points: 6 },
+    { parameter_key: 'active_days_per_month', min_value: 20, max_value: 32, label: '> 20 days', points: 10 },
+    { parameter_key: 'active_days_per_month', option_key: 'consistent', label: 'Consistent (> 20d)', points: 10 },
+    { parameter_key: 'active_days_per_month', option_key: 'moderate', label: 'Moderate (10–20d)', points: 6 },
+    { parameter_key: 'active_days_per_month', option_key: 'irregular', label: 'Irregular (< 10d)', points: 2 },
+  ],
+  airtime_loan_repayment: [
+    { parameter_key: 'airtime_loan_repayment', option_key: '100%_repaid', label: 'On time 100%', points: 10 },
+    { parameter_key: 'airtime_loan_repayment', option_key: '80_99%_repaid', label: '80–99%', points: 7 },
+    { parameter_key: 'airtime_loan_repayment', option_key: '50_79%_repaid', label: '50–79%', points: 3 },
+    { parameter_key: 'airtime_loan_repayment', option_key: 'under_50%', label: '< 50%', points: 0 },
+    { parameter_key: 'airtime_loan_repayment', option_key: 'defaulted_often', label: 'Defaulted often', points: 0 },
+    { parameter_key: 'airtime_loan_repayment', option_key: 'none', label: 'No loan taken (skip)', points: -1 },
+    { parameter_key: 'airtime_loan_repayment', option_key: 'skip', label: 'Skip', points: -1 },
+  ],
+
+  // W: Wallet & Mobile Money
+  wallet_months_active: [
+    { parameter_key: 'wallet_months_active', min_value: 0, max_value: 3, label: '< 3 months', points: 0 },
+    { parameter_key: 'wallet_months_active', min_value: 3, max_value: 6, label: '3–6 months', points: 3 },
+    { parameter_key: 'wallet_months_active', min_value: 6, max_value: 12, label: '6–12 months', points: 6 },
+    { parameter_key: 'wallet_months_active', min_value: 12, max_value: 9999, label: '> 12 months', points: 10 },
+  ],
+  wallet_inflow_months_of_12: [
+    { parameter_key: 'wallet_inflow_months_of_12', min_value: 0, max_value: 4, label: '0–3 months', points: 0 },
+    { parameter_key: 'wallet_inflow_months_of_12', min_value: 4, max_value: 7, label: '4–6 months', points: 3 },
+    { parameter_key: 'wallet_inflow_months_of_12', min_value: 7, max_value: 10, label: '7–9 months', points: 6 },
+    { parameter_key: 'wallet_inflow_months_of_12', min_value: 10, max_value: 13, label: '10–12 months', points: 10 },
+    { parameter_key: 'wallet_inflow_months_of_12', option_key: 'regular', label: 'Regular (10–12m)', points: 10 },
+    { parameter_key: 'wallet_inflow_months_of_12', option_key: 'seasonal', label: 'Seasonal (7–9m)', points: 6 },
+    { parameter_key: 'wallet_inflow_months_of_12', option_key: 'sporadic', label: 'Sporadic (4–6m)', points: 3 },
+    { parameter_key: 'wallet_inflow_months_of_12', option_key: 'none', label: 'None (0–3m)', points: 0 },
+  ],
+  avg_monthly_inflow_kz: [
+    { parameter_key: 'avg_monthly_inflow_kz', min_value: 0, max_value: 20000, label: '< 20,000 Kz', points: 2 },
+    { parameter_key: 'avg_monthly_inflow_kz', min_value: 20000, max_value: 80000, label: '20,000–80,000 Kz', points: 5 },
+    { parameter_key: 'avg_monthly_inflow_kz', min_value: 80000, max_value: 200000, label: '80,000–200,000 Kz', points: 8 },
+    { parameter_key: 'avg_monthly_inflow_kz', min_value: 200000, max_value: 999999999, label: '> 200,000 Kz', points: 10 },
+  ],
+  merchant_qr_receipts: [
+    { parameter_key: 'merchant_qr_receipts', option_key: 'none', label: 'None', points: 0 },
+    { parameter_key: 'merchant_qr_receipts', option_key: 'some', label: 'Some', points: 5 },
+    { parameter_key: 'merchant_qr_receipts', option_key: 'regular', label: 'Regular', points: 10 },
+  ],
+  bill_payments_via_wallet: [
+    { parameter_key: 'bill_payments_via_wallet', option_key: 'none', label: 'None', points: 0 },
+    { parameter_key: 'bill_payments_via_wallet', option_key: 'sometimes', label: 'Sometimes', points: 5 },
+    { parameter_key: 'bill_payments_via_wallet', option_key: 'regular', label: 'Regular', points: 10 },
+  ],
+  wallet_balance_stability: [
+    { parameter_key: 'wallet_balance_stability', option_key: 'low', label: 'Low', points: 2 },
+    { parameter_key: 'wallet_balance_stability', option_key: 'volatile', label: 'Volatile', points: 2 },
+    { parameter_key: 'wallet_balance_stability', option_key: 'medium', label: 'Medium', points: 6 },
+    { parameter_key: 'wallet_balance_stability', option_key: 'high', label: 'High', points: 10 },
+    { parameter_key: 'wallet_balance_stability', option_key: 'stable', label: 'Stable', points: 10 },
+  ],
+  wallet_loan_repayment: [
+    { parameter_key: 'wallet_loan_repayment', option_key: '100%_repaid', label: 'On time 100%', points: 10 },
+    { parameter_key: 'wallet_loan_repayment', option_key: 'on_time', label: 'On time 100%', points: 10 },
+    { parameter_key: 'wallet_loan_repayment', option_key: '80_99%_repaid', label: '80–99%', points: 7 },
+    { parameter_key: 'wallet_loan_repayment', option_key: '50_79%_repaid', label: '50–79%', points: 3 },
+    { parameter_key: 'wallet_loan_repayment', option_key: 'under_50%', label: '< 50%', points: 0 },
+    { parameter_key: 'wallet_loan_repayment', option_key: 'none', label: 'No loan (skip)', points: -1 },
+    { parameter_key: 'wallet_loan_repayment', option_key: 'skip', label: 'Skip', points: -1 },
+  ],
+
+  // B: Bank & Formal Finance
+  account_age_months: [
+    { parameter_key: 'account_age_months', min_value: 0, max_value: 6, label: '< 6 months', points: 2 },
+    { parameter_key: 'account_age_months', min_value: 6, max_value: 24, label: '6–24 months', points: 5 },
+    { parameter_key: 'account_age_months', min_value: 24, max_value: 9999, label: '> 24 months', points: 10 },
+  ],
+  credits_months_of_12: [
+    { parameter_key: 'credits_months_of_12', min_value: 0, max_value: 4, label: '0–3 months', points: 0 },
+    { parameter_key: 'credits_months_of_12', min_value: 4, max_value: 9, label: '4–8 months', points: 5 },
+    { parameter_key: 'credits_months_of_12', min_value: 9, max_value: 13, label: '9–12 months', points: 10 },
+  ],
+  avg_balance_kz: [
+    { parameter_key: 'avg_balance_kz', min_value: 0, max_value: 92000, label: '< 92,000 Kz (~$100)', points: 2 },
+    { parameter_key: 'avg_balance_kz', min_value: 92000, max_value: 460000, label: '92,000–460,000 Kz', points: 5 },
+    { parameter_key: 'avg_balance_kz', min_value: 460000, max_value: 999999999, label: '> 460,000 Kz (~$500)', points: 10 },
+  ],
+  card_atm_use: [
+    { parameter_key: 'card_atm_use', option_key: 'rare', label: 'Rare', points: 2 },
+    { parameter_key: 'card_atm_use', option_key: 'low', label: 'Low', points: 2 },
+    { parameter_key: 'card_atm_use', option_key: 'monthly', label: 'Monthly', points: 6 },
+    { parameter_key: 'card_atm_use', option_key: 'moderate', label: 'Moderate', points: 6 },
+    { parameter_key: 'card_atm_use', option_key: 'weekly', label: 'Weekly', points: 10 },
+    { parameter_key: 'card_atm_use', option_key: 'frequent', label: 'Frequent', points: 10 },
+  ],
+  bank_loan_repayment: [
+    { parameter_key: 'bank_loan_repayment', option_key: 'good', label: 'Good', points: 10 },
+    { parameter_key: 'bank_loan_repayment', option_key: 'on_time', label: 'On time', points: 10 },
+    { parameter_key: 'bank_loan_repayment', option_key: 'late', label: 'Late', points: 3 },
+    { parameter_key: 'bank_loan_repayment', option_key: 'fair', label: 'Fair', points: 3 },
+    { parameter_key: 'bank_loan_repayment', option_key: 'default', label: 'Default', points: 0 },
+    { parameter_key: 'bank_loan_repayment', option_key: 'none', label: 'No loan (skip)', points: -1 },
+    { parameter_key: 'bank_loan_repayment', option_key: 'skip', label: 'Skip', points: -1 },
+  ],
+  returned_payments_12m: [
+    { parameter_key: 'returned_payments_12m', min_value: 0, max_value: 1, label: '0 returns', points: 10 },
+    { parameter_key: 'returned_payments_12m', min_value: 1, max_value: 3, label: '1–2 returns', points: 6 },
+    { parameter_key: 'returned_payments_12m', min_value: 3, max_value: 6, label: '3–5 returns', points: 2 },
+    { parameter_key: 'returned_payments_12m', min_value: 6, max_value: 9999, label: '6+ returns', points: 0 },
+  ],
+
+  // X: Other Alternative Data
+  utility_bills_on_time: [
+    { parameter_key: 'utility_bills_on_time', option_key: 'always', label: 'Always', points: 10 },
+    { parameter_key: 'utility_bills_on_time', option_key: 'mostly', label: 'Mostly', points: 7 },
+    { parameter_key: 'utility_bills_on_time', option_key: 'sometimes', label: 'Sometimes', points: 4 },
+    { parameter_key: 'utility_bills_on_time', option_key: 'none', label: 'None / Skip', points: -1 },
+    { parameter_key: 'utility_bills_on_time', option_key: 'skip', label: 'Skip', points: -1 },
+  ],
+  nif_standing: [
+    { parameter_key: 'nif_standing', option_key: 'regular', label: 'Regular', points: 10 },
+    { parameter_key: 'nif_standing', option_key: 'active_good', label: 'Regular', points: 10 },
+    { parameter_key: 'nif_standing', option_key: 'irregular', label: 'Irregular', points: 3 },
+    { parameter_key: 'nif_standing', option_key: 'none', label: 'None / Skip', points: -1 },
+    { parameter_key: 'nif_standing', option_key: 'skip', label: 'Skip', points: -1 },
+  ],
+  inss_record: [
+    { parameter_key: 'inss_record', option_key: 'true', label: 'Yes', points: 10 },
+    { parameter_key: 'inss_record', option_key: 'yes', label: 'Yes', points: 10 },
+    { parameter_key: 'inss_record', option_key: 'false', label: 'None / Skip', points: -1 },
+    { parameter_key: 'inss_record', option_key: 'none', label: 'None / Skip', points: -1 },
+    { parameter_key: 'inss_record', option_key: 'skip', label: 'Skip', points: -1 },
+  ],
+  business_licence: [
+    { parameter_key: 'business_licence', option_key: 'true', label: 'Yes', points: 10 },
+    { parameter_key: 'business_licence', option_key: 'yes', label: 'Yes', points: 10 },
+    { parameter_key: 'business_licence', option_key: 'alvara_comercial', label: 'Official Alvará', points: 10 },
+    { parameter_key: 'business_licence', option_key: 'municipal_receipt', label: 'Municipal Receipt', points: 7 },
+    { parameter_key: 'business_licence', option_key: 'none', label: 'None / Skip', points: -1 },
+    { parameter_key: 'business_licence', option_key: 'skip', label: 'Skip', points: -1 },
+  ],
+};
+
+const REVERSE_ALIASES: Record<string, string[]> = {
+  topup_regularity_months: ['topup_months_of_12'],
+  topup_months_of_12: ['topup_regularity_months'],
+  arpu_stability: ['spend_stability'],
+  spend_stability: ['arpu_stability'],
+  topup_avg_amount_kz: ['recharge_value_per_month_kz', 'monthly_topup_kz'],
+  monthly_topup_kz: ['recharge_value_per_month_kz', 'topup_avg_amount_kz'],
+  recharge_value_per_month_kz: ['monthly_topup_kz', 'topup_avg_amount_kz'],
+  wallet_inflow_regularity: ['wallet_inflow_months_of_12'],
+  wallet_inflow_months_of_12: ['wallet_inflow_regularity'],
+  bill_airtime_payments: ['bill_payments_via_wallet'],
+  bill_payments_via_wallet: ['bill_airtime_payments'],
+  regular_credits_months: ['credits_months_of_12'],
+  credits_months_of_12: ['regular_credits_months'],
+  utility_bills_paid: ['utility_bills_on_time'],
+  utility_bills_on_time: ['utility_bills_paid'],
+  days_active_per_month: ['active_days_per_month'],
+  active_days_per_month: ['days_active_per_month'],
+  time_in_job_months: ['time_in_activity_months'],
+  time_in_activity_months: ['time_in_job_months'],
+  card_atm_pos_use: ['card_atm_use'],
+  card_atm_use: ['card_atm_pos_use'],
+  loan_repayment_history: ['bank_loan_repayment'],
+  bank_loan_repayment: ['loan_repayment_history'],
+};
+
+export function getInputValue(paramKey: string, inputs: Record<string, any>): any {
+  if (inputs[paramKey] !== undefined) return inputs[paramKey];
+  const aliases = REVERSE_ALIASES[paramKey] || [];
+  for (const a of aliases) {
+    if (inputs[a] !== undefined) return inputs[a];
+  }
+  return undefined;
+}
+
+/**
+ * Evaluates points earned and maximum possible points for a parameter using Point Rules.
+ */
+export function evaluateParameterPoints(
+  paramKey: string,
+  rawValue: any,
+  rulesOverride?: Record<string, PointRule[]>
+): {
+  earnedPoints: number;
+  maxPossiblePoints: number;
+  hasData: boolean;
+  isSkipped: boolean;
+  matchedLabel: string;
+} {
+  const activeRulesMap = rulesOverride || DEFAULT_POINT_RULES;
+  const canonicalKey = activeRulesMap[paramKey]
+    ? paramKey
+    : (REVERSE_ALIASES[paramKey]?.find(k => activeRulesMap[k]) || paramKey);
+  const rules = activeRulesMap[canonicalKey];
+
+  if (!rules || rules.length === 0) {
+    return {
+      earnedPoints: 0,
+      maxPossiblePoints: 10,
+      hasData: false,
+      isSkipped: false,
+      matchedLabel: '',
+    };
+  }
+
+  // Calculate max possible points among non-skipped options
+  const positiveRules = rules.filter(r => r.points >= 0);
+  const maxPossible = positiveRules.length > 0 ? Math.max(...positiveRules.map(r => r.points)) : 10;
+
+  // Check for empty / unprovided input
+  if (rawValue === undefined || rawValue === null || rawValue === '' || rawValue === 'skip') {
+    return {
+      earnedPoints: 0,
+      maxPossiblePoints: maxPossible,
+      hasData: false,
+      isSkipped: true,
+      matchedLabel: 'Not available',
+    };
+  }
+
+  // Check numeric input against range rules
+  const num = Number(rawValue);
+  if (!isNaN(num) && typeof rawValue !== 'boolean') {
+    const rangeRule = rules.find(
+      r => r.min_value !== undefined && num >= r.min_value && (r.max_value === undefined || num < r.max_value)
+    );
+    if (rangeRule) {
+      if (rangeRule.points < 0) {
+        return { earnedPoints: 0, maxPossiblePoints: maxPossible, hasData: false, isSkipped: true, matchedLabel: rangeRule.label };
+      }
+      return {
+        earnedPoints: Math.max(0, rangeRule.points),
+        maxPossiblePoints: maxPossible,
+        hasData: true,
+        isSkipped: false,
+        matchedLabel: rangeRule.label,
+      };
+    }
+  }
+
+  // Check string / boolean option rules
+  const strVal = String(rawValue).toLowerCase().trim();
+  const optionRule = rules.find(r => r.option_key && r.option_key.toLowerCase() === strVal);
+  if (optionRule) {
+    if (optionRule.points < 0) {
+      return { earnedPoints: 0, maxPossiblePoints: maxPossible, hasData: false, isSkipped: true, matchedLabel: optionRule.label };
+    }
+    return {
+      earnedPoints: Math.max(0, optionRule.points),
+      maxPossiblePoints: maxPossible,
+      hasData: true,
+      isSkipped: false,
+      matchedLabel: optionRule.label,
+    };
+  }
+
+  // Fallback to highest / lowest rule
+  const defaultRule = positiveRules[positiveRules.length - 1];
+  return {
+    earnedPoints: defaultRule ? defaultRule.points : 5,
+    maxPossiblePoints: maxPossible,
+    hasData: true,
+    isSkipped: false,
+    matchedLabel: String(rawValue),
+  };
+}
+
 /**
  * Maps a single parameter input value to a normalized strength of 0.0 .. 1.0
  * Blank/null/undefined or 'skip' inputs are skipped (never counted as 0).
- * Weight 0 or neutral parameters (like device_type or kixikila_member) are excluded from scoring.
  */
 export function scoreParameter(
   param: Parameter,
   rawValue: any
 ): { strength: number; hasValue: boolean; isExcluded: boolean; matchedBand?: string } {
-  // If no value provided or explicitly skipped, treat as no data (do not penalize)
-  if (rawValue === undefined || rawValue === null || rawValue === '' || rawValue === 'skip') {
+  // Excluded or stored-only parameters
+  if (param.weight === 0 || param.is_candidate) {
     return { strength: 0, hasValue: false, isExcluded: true };
   }
 
-  // Weight 0 parameters or neutral parameters are stored but excluded from block strength average
-  if (param.weight === 0 || param.key === 'device_type' || param.key === 'kixikila_member') {
-    return { strength: 0, hasValue: true, isExcluded: true, matchedBand: 'Stored only (weight 0 / neutral)' };
+  const pointEval = evaluateParameterPoints(param.key, rawValue);
+  if (pointEval.isSkipped || !pointEval.hasData) {
+    return { strength: 0, hasValue: false, isExcluded: pointEval.isSkipped, matchedBand: pointEval.matchedLabel };
   }
 
-  // Number input
-  if (param.input === 'number') {
-    const num = Number(rawValue);
-    if (isNaN(num)) {
-      return { strength: 0, hasValue: false, isExcluded: true };
-    }
-
-    if (!param.bands || param.bands.length === 0) {
-      return { strength: 0.5, hasValue: true, isExcluded: false };
-    }
-
-    // Match band
-    for (const b of param.bands) {
-      const hasMin = b.min !== undefined && b.min !== null;
-      const hasMax = b.max !== undefined && b.max !== null;
-
-      if (hasMin && hasMax) {
-        if (num >= b.min! && num <= b.max!) {
-          return { strength: b.score, hasValue: true, isExcluded: false, matchedBand: `${b.min}-${b.max} (${b.score})` };
-        }
-      } else if (hasMax && !hasMin) {
-        if (num <= b.max!) {
-          return { strength: b.score, hasValue: true, isExcluded: false, matchedBand: `<=${b.max} (${b.score})` };
-        }
-      } else if (hasMin && !hasMax) {
-        if (num >= b.min!) {
-          return { strength: b.score, hasValue: true, isExcluded: false, matchedBand: `>=${b.min} (${b.score})` };
-        }
-      }
-    }
-
-    // Default if outside all bands: clamp to closest
-    const firstScore = param.bands[0]?.score ?? 0.5;
-    const lastScore = param.bands[param.bands.length - 1]?.score ?? 0.5;
-    return { strength: num < 0 ? firstScore : lastScore, hasValue: true, isExcluded: false };
-  }
-
-  // Choice input
-  if (param.input === 'choice') {
-    const strVal = String(rawValue);
-    if (!param.bands || param.bands.length === 0) {
-      return { strength: 0.5, hasValue: true, isExcluded: false };
-    }
-
-    const match = param.bands.find(b => String(b.value) === strVal);
-    if (match) {
-      return { strength: match.score, hasValue: true, isExcluded: false, matchedBand: match.label || strVal };
-    }
-    return { strength: 0.5, hasValue: true, isExcluded: false };
-  }
-
-  // Boolean input
-  if (param.input === 'boolean') {
-    const boolVal = Boolean(rawValue);
-    if (param.bands && param.bands.length > 0) {
-      const match = param.bands.find(b => Boolean(b.value) === boolVal);
-      if (match) {
-        return { strength: match.score, hasValue: true, isExcluded: false, matchedBand: match.label || String(boolVal) };
-      }
-    }
-    return { strength: boolVal ? 1.0 : 0.0, hasValue: true, isExcluded: false };
-  }
-
-  // Yes / No / Skip
-  if (param.input === 'yes_no_skip') {
-    if (rawValue === 'yes') return { strength: 1.0, hasValue: true, isExcluded: false, matchedBand: 'Yes' };
-    if (rawValue === 'no') return { strength: 0.0, hasValue: true, isExcluded: false, matchedBand: 'No' };
-    return { strength: 0, hasValue: false, isExcluded: true, matchedBand: 'Skip' };
-  }
-
-  return { strength: 0.5, hasValue: true, isExcluded: false };
+  const strength = pointEval.maxPossiblePoints > 0 ? pointEval.earnedPoints / pointEval.maxPossiblePoints : 0;
+  return {
+    strength: Math.min(1.0, Math.max(0.0, strength)),
+    hasValue: true,
+    isExcluded: false,
+    matchedBand: pointEval.matchedLabel,
+  };
 }
 
 /**
@@ -221,12 +507,17 @@ export function calculateAssetBonus(assets?: {
 }
 
 /**
- * Main Scoring Engine
+ * Main Scoring Engine v2
+ * Fully pure function implementing the points table model.
  */
-export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
+export function calculateCreditScore(
+  inputs: ScoringInputs,
+  weightsOverride?: SegmentWeight[],
+  rulesOverride?: Record<string, PointRule[]>
+): ScoringResult {
   const {
     segmentCode,
-    configVersionId = 'v1.0-default',
+    configVersionId = 'v2.0-default',
     walletAvailable = true,
     parameterInputs = {},
     assets = {},
@@ -240,19 +531,23 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
   const blockCodes: BlockCode[] = ['P', 'T', 'W', 'B', 'X'];
 
   // 1. Retrieve configured base weights for this segment
-  const segmentWeights = DEFAULT_WEIGHTS.filter(w => w.segment_code === segmentCode);
+  const activeWeights = weightsOverride || DEFAULT_WEIGHTS;
+  const segmentWeights = activeWeights.filter(w => w.segment_code === segmentCode);
   const baseWeightsByBlock: Record<BlockCode, number> = {
     P: 0, T: 0, W: 0, B: 0, X: 0, A: 0,
   };
   segmentWeights.forEach(w => {
-    baseWeightsByBlock[w.block_code] = w.points;
+    baseWeightsByBlock[w.block_code as BlockCode] = w.points;
   });
 
   // Determine segment's designated primary (main) block
-  const mainWeightEntry = segmentWeights.reduce((prev, curr) => (curr.points > prev.points ? curr : prev), segmentWeights[0]);
+  const mainWeightEntry = segmentWeights.reduce(
+    (prev, curr) => (curr.points > prev.points ? curr : prev),
+    segmentWeights[0]
+  );
   const designatedMainBlock: BlockCode = mainWeightEntry?.block_code || 'T';
 
-  // 2. Evaluate parameter strengths per block
+  // 2. Evaluate parameter points per block
   const blockDetails: Record<BlockCode, BlockScoreDetail> = {
     P: { blockCode: 'P', basePoints: baseWeightsByBlock.P, effectivePoints: baseWeightsByBlock.P, earnedPoints: 0, blockStrength: 0, hasData: false, availableParamsCount: 0, totalConfiguredParams: 0, parameters: [] },
     T: { blockCode: 'T', basePoints: baseWeightsByBlock.T, effectivePoints: baseWeightsByBlock.T, earnedPoints: 0, blockStrength: 0, hasData: false, availableParamsCount: 0, totalConfiguredParams: 0, parameters: [] },
@@ -263,53 +558,116 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
   };
 
   const configuredParams = DEFAULT_PARAMETERS.filter(p => p.block_code !== 'A');
+  let hadAnyMissingData = false;
 
   for (const blockCode of blockCodes) {
     const blockParams = configuredParams.filter(p => p.block_code === blockCode);
     const detail = blockDetails[blockCode];
     detail.totalConfiguredParams = blockParams.length;
 
-    let weightedStrengthSum = 0;
-    let totalWeight = 0;
+    let pointsEarnedSum = 0;
+    let pointsPossibleSum = 0;
     let availableCount = 0;
 
+    // Month / Quarter toggle detection for Block T (recharge parameters)
+    const rechargeView = parameterInputs['recharge_view'] ||
+      (parameterInputs['recharge_value_per_quarter_kz'] !== undefined && parameterInputs['recharge_value_per_month_kz'] === undefined
+        ? 'quarter'
+        : 'month');
+
     for (const param of blockParams) {
-      const rawVal = parameterInputs[param.key];
-      const scored = scoreParameter(param, rawVal);
+      // Mutual exclusion: never count both Month and Quarter recharge values in the same calculation
+      if (blockCode === 'T') {
+        if (param.key === 'recharge_value_per_quarter_kz' && rechargeView !== 'quarter') {
+          detail.parameters.push({
+            key: param.key,
+            label: param.label,
+            blockCode: param.block_code,
+            inputValue: parameterInputs[param.key],
+            strength: 0,
+            pointsEarned: 0,
+            maxPointsPossible: 10,
+            weight: param.weight,
+            isExcluded: true,
+            hasValue: false,
+            matchedBand: 'Skipped (Month view active)',
+          });
+          continue;
+        }
+        if (param.key === 'recharge_value_per_month_kz' && rechargeView === 'quarter') {
+          detail.parameters.push({
+            key: param.key,
+            label: param.label,
+            blockCode: param.block_code,
+            inputValue: parameterInputs[param.key],
+            strength: 0,
+            pointsEarned: 0,
+            maxPointsPossible: 10,
+            weight: param.weight,
+            isExcluded: true,
+            hasValue: false,
+            matchedBand: 'Skipped (Quarter view active)',
+          });
+          continue;
+        }
+        if (param.key === 'topup_avg_amount_kz' && (parameterInputs['recharge_value_per_month_kz'] !== undefined || parameterInputs['recharge_value_per_quarter_kz'] !== undefined)) {
+          detail.parameters.push({
+            key: param.key,
+            label: param.label,
+            blockCode: param.block_code,
+            inputValue: undefined,
+            strength: 0,
+            pointsEarned: 0,
+            maxPointsPossible: 10,
+            weight: param.weight,
+            isExcluded: true,
+            hasValue: false,
+            matchedBand: 'Replaced by recharge parameters',
+          });
+          continue;
+        }
+      }
+
+      const rawVal = getInputValue(param.key, parameterInputs);
+      const ptEval = evaluateParameterPoints(param.key, rawVal, rulesOverride);
 
       const pDetail: ParameterScoreDetail = {
         key: param.key,
         label: param.label,
         blockCode: param.block_code,
         inputValue: rawVal,
-        strength: scored.strength,
+        strength: ptEval.maxPossiblePoints > 0 ? ptEval.earnedPoints / ptEval.maxPossiblePoints : 0,
+        pointsEarned: ptEval.earnedPoints,
+        maxPointsPossible: ptEval.maxPossiblePoints,
         weight: param.weight,
-        isExcluded: scored.isExcluded,
-        hasValue: scored.hasValue,
-        matchedBand: scored.matchedBand,
+        isExcluded: ptEval.isSkipped,
+        hasValue: ptEval.hasData,
+        matchedBand: ptEval.matchedLabel,
       };
       detail.parameters.push(pDetail);
 
-      if (scored.hasValue && !scored.isExcluded) {
+      if (ptEval.hasData && !ptEval.isSkipped) {
         availableCount++;
-        weightedStrengthSum += scored.strength * param.weight;
-        totalWeight += param.weight;
+        pointsEarnedSum += ptEval.earnedPoints;
+        pointsPossibleSum += ptEval.maxPossiblePoints;
+      } else {
+        hadAnyMissingData = true;
       }
     }
 
     detail.availableParamsCount = availableCount;
 
     // Check if block has valid data
-    // Note: if wallet is turned off, W has NO data
     if (blockCode === 'W' && !walletAvailable) {
       detail.hasData = false;
       detail.blockStrength = 0;
-    } else if (availableCount > 0 && totalWeight > 0) {
+    } else if (availableCount > 0 && pointsPossibleSum > 0) {
       detail.hasData = true;
-      let calculatedStrength = Math.min(1.0, Math.max(0.0, weightedStrengthSum / totalWeight));
+      let calculatedStrength = Math.min(1.0, Math.max(0.0, pointsEarnedSum / pointsPossibleSum));
 
       // Behavioral Integrity: SIM tenure alone cannot give high telecom score without confirmed recharge activity
-      if (blockCode === 'T' && (parameterInputs['topup_regularity_months'] === undefined || parameterInputs['topup_regularity_months'] === null || parameterInputs['topup_regularity_months'] === '')) {
+      const topupVal = parameterInputs['topup_months_of_12'] ?? parameterInputs['topup_regularity_months'];
+      if (blockCode === 'T' && (topupVal === undefined || topupVal === null || topupVal === '')) {
         calculatedStrength = Math.min(0.30, calculatedStrength);
       }
 
@@ -323,10 +681,8 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
   // 3. Dynamic Point Redistribution
   // Blocks with configured base points > 0 that have NO data (or W when wallet is off)
   // move their points proportionally to blocks with data, giving priority to the main block.
-  // Never push points into a block with no data.
   const redistributions: RedistributionRecord[] = [];
 
-  // Identify active blocks that have data
   const blocksWithData = blockCodes.filter(b => blockDetails[b].hasData && (b !== 'W' || walletAvailable));
   const blocksNeedingRedistribution = blockCodes.filter(
     b => baseWeightsByBlock[b] > 0 && (!blockDetails[b].hasData || (b === 'W' && !walletAvailable))
@@ -337,22 +693,17 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
       const pointsToMove = baseWeightsByBlock[emptyBlock];
       if (pointsToMove <= 0) continue;
 
-      // Select target block with priority to main operational block
       let targetBlock: BlockCode;
-
-      // If segment's designated main block has data and is not the empty block, it gets priority
       if (blocksWithData.includes(designatedMainBlock) && designatedMainBlock !== emptyBlock) {
         targetBlock = designatedMainBlock;
       } else {
-        // Main block itself is empty (e.g. W in S3), find the operational behavioral block with highest points
         const behavioralBlocks = blocksWithData.filter(b => b !== 'P');
         if (behavioralBlocks.length > 0) {
-          // Choose highest weighted behavioral block
-          targetBlock = behavioralBlocks.reduce((prev, curr) =>
-            baseWeightsByBlock[curr] > baseWeightsByBlock[prev] ? curr : prev, behavioralBlocks[0]
+          targetBlock = behavioralBlocks.reduce(
+            (prev, curr) => (baseWeightsByBlock[curr] > baseWeightsByBlock[prev] ? curr : prev),
+            behavioralBlocks[0]
           );
         } else {
-          // Only P has data
           targetBlock = 'P';
         }
       }
@@ -371,8 +722,6 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
     }
   }
 
-
-
   // 4. Earned Points & Asset Bonus
   let basePointsEarned = 0;
   for (const b of blockCodes) {
@@ -385,7 +734,7 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
   const totalPoints = Math.min(100, Math.max(0, basePointsEarned + assetBonus));
 
   // 5. Calculate Score (300 .. 900)
-  // formula: round(300 + (totalPoints / 100) * 600)
+  // Formula: round(300 + (totalPoints / 100) * 600)
   const score = Math.round(300 + (totalPoints / 100) * 600);
 
   // Match Score Band
@@ -401,7 +750,7 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
   // Rule 1: ID & SIM Match
   const idSimInput = parameterInputs['id_sim_match'];
   const idSimMatch = customerMeta.idSimMatch !== undefined ? customerMeta.idSimMatch : idSimInput;
-  if (idSimMatch === false) {
+  if (idSimMatch === false || idSimMatch === 'no') {
     isHardStop = true;
     overlayFlags.push({
       ruleKey: 'id_sim_mismatch',
@@ -413,7 +762,7 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
   }
 
   // Rule 2: Age under 18
-  let applicantAge = 25; // default eligible
+  let applicantAge = 25;
   if (customerMeta.dateOfBirth) {
     const dob = new Date(customerMeta.dateOfBirth);
     const diffMs = Date.now() - dob.getTime();
@@ -456,46 +805,29 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
     });
   }
 
-  // 7. Data Confidence Evaluation
-  // High = 3 or more blocks with data AND 12 months or more of data
-  // Medium = 2 blocks OR 6-12 months
-  // Low = 1 block OR under 6 months. Low confidence caps limit at starter level.
-  const activeBlockCount = blocksWithData.length;
-  let dataConfidence: 'high' | 'medium' | 'low';
-  const confidenceReasons: string[] = [];
+  // 7. Data Coverage Evaluation (0 to 100%)
+  const verifiedBasePoints = blocksWithData.reduce((sum, b) => sum + baseWeightsByBlock[b], 0);
+  const dataCoverageScore = Math.round((verifiedBasePoints / 94) * 100);
+  const dataCoverageLabel: 'High' | 'Medium' | 'Low' =
+    dataCoverageScore >= 75 ? 'High' : dataCoverageScore >= 50 ? 'Medium' : 'Low';
+  const dataConfidence: 'high' | 'medium' | 'low' =
+    dataCoverageScore >= 75 ? 'high' : dataCoverageScore >= 50 ? 'medium' : 'low';
 
-  if (activeBlockCount >= 3 && simTenureMonths >= 12) {
-    dataConfidence = 'high';
-    confidenceReasons.push(`High data confidence: ${activeBlockCount} active parameter blocks and established tenure (${simTenureMonths}m).`);
-  } else if (activeBlockCount >= 2 || simTenureMonths >= 6) {
-    dataConfidence = 'medium';
-    confidenceReasons.push(`Medium data confidence: ${activeBlockCount} active parameter blocks with ${simTenureMonths}m subscriber tenure.`);
-  } else {
-    dataConfidence = 'low';
-    confidenceReasons.push(`Low data confidence: Thin file (${activeBlockCount} active block, ${simTenureMonths}m tenure).`);
-    isCappedAtStarter = true;
-  }
-
-  // Special case: if wallet was designated main block (e.g. S3) and wallet is off, confidence drops
-  if (designatedMainBlock === 'W' && !walletAvailable && dataConfidence === 'high') {
-    dataConfidence = 'medium';
-    confidenceReasons.push('Confidence adjusted to Medium because primary Wallet channel data is disabled.');
-  }
+  const confidenceReasons: string[] = [
+    `Data coverage: ${dataCoverageScore}% across verified data sources.`,
+  ];
 
   // 8. Credit Limit Calculation
-  // Lowest of: score band limit, income band cap, EMI cap
-  let limitLevel = scoreBand.limit_level; // 'review' | 'starter' | 'standard' | 'higher' | 'highest'
+  let limitLevel = scoreBand.limit_level;
 
   if (isHardStop) {
     limitLevel = 'review';
   } else if (isCappedAtStarter) {
     limitLevel = 'starter';
   } else if (segmentCode === 'S1' && simTenureMonths < 12) {
-    // S1 rule: starter limit only until tenure >= 12m
     limitLevel = 'starter';
   }
 
-  // Map limit levels to standard baseline amounts (in Kz)
   const baselineLimits: Record<string, number> = {
     review: 0,
     starter: 50000,
@@ -507,7 +839,6 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
   let maxLimitKz = baselineLimits[limitLevel] ?? 50000;
   let limitCapApplied = `Score Band: ${scoreBand.label} (${limitLevel.toUpperCase()})`;
 
-  // Apply Income Band Cap if income band provided
   if (incomeBandCode) {
     const incBand = DEFAULT_INCOME_BANDS.find(ib => ib.code === incomeBandCode);
     if (incBand) {
@@ -530,8 +861,7 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
   }
 
   // 9. Affordability & EMI Calculation
-  // Monthly income estimation
-  let monthlyIncomeKz = 100000; // default national minimum wage (100k Kz since Sept 2025)
+  let monthlyIncomeKz = 100000; // national baseline minimum wage
   let incomeSource: 'stated' | 'band' | 'spend_proxy' | 'minimum_wage' = 'minimum_wage';
 
   if (statedIncomeKz && statedIncomeKz > 0) {
@@ -564,47 +894,42 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
     };
   }
 
-  // 10. Generate Plain English Positive Reasons & Data Gaps
+  // 10. Generate Top 3 Reasons in Plain Words
   const positiveReasons: string[] = [];
   const dataGaps: string[] = [];
 
   if (simTenureMonths >= 24) {
-    positiveReasons.push(`Strong subscriber loyalty with ${simTenureMonths} months continuous Unitel network tenure.`);
+    positiveReasons.push(`Longstanding mobile subscriber loyalty (${simTenureMonths} months tenure).`);
   } else if (simTenureMonths >= 12) {
-    positiveReasons.push(`Established telecom relationship with ${simTenureMonths} months tenure.`);
+    positiveReasons.push(`Established telecom relationship (${simTenureMonths} months tenure).`);
   }
 
-  const topupReg = Number(parameterInputs['topup_regularity_months']);
-  if (topupReg >= 10) {
-    positiveReasons.push(`Consistent airtime recharges in ${topupReg} of the past 12 months.`);
+  const topupMonths = Number(parameterInputs['topup_months_of_12'] ?? parameterInputs['topup_regularity_months']);
+  if (topupMonths >= 10) {
+    positiveReasons.push(`Consistent monthly airtime recharges (${topupMonths} of past 12 months).`);
   }
 
-  if (parameterInputs['arpu_stability'] === 'stable' || parameterInputs['arpu_stability'] === 'growing') {
-    positiveReasons.push('Stable and predictable telecom spend pattern.');
+  if (walletAvailable && blockDetails.W.hasData && blockDetails.W.blockStrength >= 0.7) {
+    positiveReasons.push('Active mobile money wallet transactions and digital inflows.');
   }
 
-  if (walletAvailable && (parameterInputs['wallet_level'] === 'kyc_verified' || parameterInputs['wallet_inflow_regularity'] === 'regular')) {
-    positiveReasons.push('Active verified Unitel Money wallet with recurring digital inflows.');
-  }
-
-  if (parameterInputs['salary_amount_band'] || parameterInputs['regular_credits_months'] >= 6) {
-    positiveReasons.push('Regular monthly bank payroll deposits demonstrate formal repayment ability.');
+  if (blockDetails.B.hasData && blockDetails.B.blockStrength >= 0.7) {
+    positiveReasons.push('Verified formal banking relationship with regular account deposits.');
   }
 
   if (assetBonus > 0) {
-    positiveReasons.push(`Verified asset footprint adds +${assetBonus} bonus points to credit profile.`);
+    positiveReasons.push(`Tangible residential or vehicle asset bonus added (+${assetBonus} pts).`);
   }
 
-  // Data Gaps (informative, not punitive)
-  if (!blockDetails.B.hasData) {
-    dataGaps.push('No commercial bank account history recorded (evaluated via telecom and mobile money proxy).');
+  // Ensure up to 3 reasons
+  if (positiveReasons.length < 3) {
+    positiveReasons.push('Verified national identity registry match with active SIM ownership.');
   }
-  if (!walletAvailable || !blockDetails.W.hasData) {
-    dataGaps.push('Mobile money wallet channel data is unavailable or unlinked.');
-  }
-  if (simTenureMonths < 6) {
-    dataGaps.push('Limited telecom tenure (< 6 months) restricts initial financing to starter limit.');
-  }
+
+  const finalTop3Reasons = positiveReasons.slice(0, 3);
+  const missingDataNote = hadAnyMissingData || redistributions.length > 0
+    ? 'Missing data did not lower the score.'
+    : undefined;
 
   return {
     segmentCode,
@@ -614,6 +939,9 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
     assetBonus,
     scoreBand,
     dataConfidence,
+    dataCoverageScore,
+    dataCoverageLabel,
+    missingDataNote,
     confidenceReasons,
     blockScores: blockDetails,
     redistributions,
@@ -623,9 +951,9 @@ export function calculateCreditScore(inputs: ScoringInputs): ScoringResult {
     isCappedAtStarter,
     limitKz: maxLimitKz,
     limitCapApplied,
-    positiveReasons,
+    positiveReasons: finalTop3Reasons,
     dataGaps,
-    scoreVersion: `${configVersionId}-engine-v1.0`,
+    scoreVersion: `${configVersionId}-points-engine-v2`,
     computedAt: new Date().toISOString(),
     affordability,
   };

@@ -96,7 +96,7 @@ export const Heatmap: React.FC<HeatmapProps> = ({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-border">
-          {DEFAULT_SEGMENTS.map((segment) => {
+          {DEFAULT_SEGMENTS.filter((s) => s.is_active ?? true).map((segment) => {
             const isSelected = selectedSegment === segment.code;
 
             // Find main block

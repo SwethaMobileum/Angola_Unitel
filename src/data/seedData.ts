@@ -42,6 +42,7 @@ export const DEFAULT_SEGMENTS: Segment[] = [
     share_note: 'Estimated ~35% of prepaid base in peri-urban and rural Angola.',
     limit_rule: 'Starter limit only (max 50,000 Kz) until tenure >= 12m or wallet activated.',
     sort: 1,
+    is_active: true,
   },
   {
     code: 'S2',
@@ -53,6 +54,7 @@ export const DEFAULT_SEGMENTS: Segment[] = [
     share_note: 'Estimated ~20% of subscribers.',
     limit_rule: 'Eligible for standard limits if wallet inflows are consistent.',
     sort: 2,
+    is_active: false,
   },
   {
     code: 'S3',
@@ -64,6 +66,7 @@ export const DEFAULT_SEGMENTS: Segment[] = [
     share_note: 'Fastest growing youth & student segment in Luanda/Benguela.',
     limit_rule: 'Standard limit based on wallet volume and app tenure.',
     sort: 3,
+    is_active: true,
   },
   {
     code: 'S4',
@@ -75,6 +78,7 @@ export const DEFAULT_SEGMENTS: Segment[] = [
     share_note: 'Prevalent in market hubs and transport terminals.',
     limit_rule: 'Credit limit tied to agent transaction history and regularity.',
     sort: 4,
+    is_active: false,
   },
   {
     code: 'S5',
@@ -86,6 +90,7 @@ export const DEFAULT_SEGMENTS: Segment[] = [
     share_note: 'Established formal demographic (~15% of national population).',
     limit_rule: 'Standard to Higher limit based on average bank balance.',
     sort: 5,
+    is_active: true,
   },
   {
     code: 'S6',
@@ -97,6 +102,7 @@ export const DEFAULT_SEGMENTS: Segment[] = [
     share_note: 'High-velocity urban middle class.',
     limit_rule: 'Higher credit limits supported by digital banking velocity.',
     sort: 6,
+    is_active: false,
   },
   {
     code: 'S7',
@@ -108,6 +114,7 @@ export const DEFAULT_SEGMENTS: Segment[] = [
     share_note: 'High stability, lowest default rate segment.',
     limit_rule: 'High to Highest credit limits, up to 1,000,000 Kz.',
     sort: 7,
+    is_active: true,
   },
   {
     code: 'S8',
@@ -119,6 +126,7 @@ export const DEFAULT_SEGMENTS: Segment[] = [
     share_note: 'Drives >60% of Angolan informal commercial economy.',
     limit_rule: 'Credit limit tied to 90-day merchant inflow velocity.',
     sort: 8,
+    is_active: true,
   },
   {
     code: 'S9',
@@ -130,6 +138,7 @@ export const DEFAULT_SEGMENTS: Segment[] = [
     share_note: 'Vulnerable to economic shocks but highly loyal.',
     limit_rule: 'Standard limit with strict 30% EMI safety cap.',
     sort: 9,
+    is_active: false,
   },
   {
     code: 'S10',
@@ -141,6 +150,7 @@ export const DEFAULT_SEGMENTS: Segment[] = [
     share_note: 'Top 3% telecom revenue tier.',
     limit_rule: 'Highest credit limit tier with express auto-approval.',
     sort: 10,
+    is_active: false,
   },
 ];
 
@@ -485,10 +495,61 @@ export const DEFAULT_PARAMETERS: Parameter[] = [
     sort: 2,
   },
   {
+    key: 'recharges_per_month',
+    block_code: 'T',
+    label: 'Recharges per Month (3m Avg)',
+    help: 'Average number of recharges per month over last 3 months',
+    input: 'number',
+    unit: 'recharges',
+    bands: [
+      { max: 2, score: 0.2 },
+      { min: 2, max: 5, score: 0.5 },
+      { min: 5, max: 8.001, score: 0.8 },
+      { min: 8.001, score: 1.0 },
+    ],
+    weight: 1.0,
+    is_candidate: false,
+    sort: 3,
+  },
+  {
+    key: 'recharge_value_per_month_kz',
+    block_code: 'T',
+    label: 'Recharge Value / Month (3m Avg)',
+    help: 'Average recharge value per month over last 3 months in Kwanzas',
+    input: 'number',
+    unit: 'Kz',
+    bands: [
+      { max: 1500, score: 0.2 },
+      { min: 1500, max: 3000, score: 0.5 },
+      { min: 3000, max: 6000, score: 0.8 },
+      { min: 6000, score: 1.0 },
+    ],
+    weight: 1.0,
+    is_candidate: false,
+    sort: 4,
+  },
+  {
+    key: 'recharge_value_per_quarter_kz',
+    block_code: 'T',
+    label: 'Recharge Value / Quarter (3m Total)',
+    help: 'Total recharge value over last 3 months in Kwanzas',
+    input: 'number',
+    unit: 'Kz',
+    bands: [
+      { max: 4500, score: 0.2 },
+      { min: 4500, max: 9000, score: 0.5 },
+      { min: 9000, max: 18000, score: 0.8 },
+      { min: 18000, score: 1.0 },
+    ],
+    weight: 1.0,
+    is_candidate: false,
+    sort: 5,
+  },
+  {
     key: 'topup_avg_amount_kz',
     block_code: 'T',
     label: 'Average Top-up Amount',
-    help: 'Typical single recharge amount in Kwanzas',
+    help: 'Typical single recharge amount in Kwanzas (Legacy alias)',
     input: 'number',
     unit: 'Kz',
     bands: [
@@ -499,7 +560,7 @@ export const DEFAULT_PARAMETERS: Parameter[] = [
     ],
     weight: 1.0,
     is_candidate: false,
-    sort: 3,
+    sort: 6,
   },
   {
     key: 'arpu_kz',
@@ -1148,7 +1209,7 @@ export const DEFAULT_PARAMETERS: Parameter[] = [
 export const DEFAULT_SEGMENT_PARAMETERS: Record<string, string[]> = {
   S1: [
     'id_sim_match', 'age_band', 'region',
-    'sim_tenure_months', 'topup_regularity_months', 'topup_avg_amount_kz', 'arpu_stability', 'usage_consistency', 'airtime_loan_repayment', 'device_type'
+    'sim_tenure_months', 'topup_regularity_months', 'recharges_per_month', 'recharge_value_per_month_kz', 'recharge_value_per_quarter_kz', 'arpu_stability', 'usage_consistency', 'airtime_loan_repayment', 'device_type'
   ],
   S2: [
     'id_sim_match', 'age_band', 'region',
@@ -1157,7 +1218,7 @@ export const DEFAULT_SEGMENT_PARAMETERS: Record<string, string[]> = {
   ],
   S3: [
     'id_sim_match', 'age_band', 'region', 'employment_type',
-    'sim_tenure_months', 'topup_regularity_months', 'arpu_stability', 'airtime_loan_repayment', 'device_type', 'data_bundles_per_month', 'usage_consistency',
+    'sim_tenure_months', 'topup_regularity_months', 'recharges_per_month', 'recharge_value_per_month_kz', 'recharge_value_per_quarter_kz', 'arpu_stability', 'airtime_loan_repayment', 'device_type', 'data_bundles_per_month', 'usage_consistency',
     'wallet_level', 'wallet_inflow_regularity', 'p2p_per_month', 'merchant_qr_receipts_kz', 'bill_airtime_payments', 'wallet_balance_stability', 'wallet_loan_repayment'
   ],
   S4: [
@@ -1167,7 +1228,7 @@ export const DEFAULT_SEGMENT_PARAMETERS: Record<string, string[]> = {
   ],
   S5: [
     'id_sim_match', 'age_band', 'region', 'employment_type',
-    'sim_tenure_months', 'topup_regularity_months', 'arpu_stability',
+    'sim_tenure_months', 'topup_regularity_months', 'recharges_per_month', 'recharge_value_per_month_kz', 'recharge_value_per_quarter_kz', 'arpu_stability',
     'account_age_months', 'regular_credits_months', 'avg_balance_kz', 'card_atm_pos_use', 'loan_repayment_history', 'returned_payments_12m', 'credit_register_flag',
     'utility_bills_paid', 'nif_standing'
   ],
@@ -1179,14 +1240,14 @@ export const DEFAULT_SEGMENT_PARAMETERS: Record<string, string[]> = {
   ],
   S7: [
     'id_sim_match', 'age_band', 'employer_type', 'time_in_job_months',
-    'sim_tenure_months', 'topup_regularity_months', 'arpu_stability',
+    'sim_tenure_months', 'topup_regularity_months', 'recharges_per_month', 'recharge_value_per_month_kz', 'recharge_value_per_quarter_kz', 'arpu_stability',
     'wallet_inflow_regularity',
     'regular_credits_months', 'salary_amount_band', 'avg_balance_kz', 'returned_payments_12m', 'credit_register_flag',
     'nif_standing', 'inss_record'
   ],
   S8: [
     'id_sim_match', 'age_band', 'business_type', 'time_in_job_months', 'region',
-    'arpu_stability', 'topup_regularity_months', 'usage_consistency',
+    'arpu_stability', 'topup_regularity_months', 'recharges_per_month', 'recharge_value_per_month_kz', 'recharge_value_per_quarter_kz', 'usage_consistency',
     'merchant_qr_receipts_kz', 'wallet_inflow_regularity', 'wallet_loan_repayment',
     'regular_credits_months', 'returned_payments_12m',
     'business_licence', 'nif_standing', 'utility_bills_paid'
@@ -1211,37 +1272,73 @@ export const SAMPLE_CUSTOMERS: Customer[] = [
   {
     id: 'c-joao-s1',
     full_name: 'João Manuel Baptista',
-    email: 'bhargownarravula777@gmail.com',
-    msisdn: '+244 923 100 001',
+    email: 'joao.baptista@gmail.com',
+    msisdn: '+244 923 000 001',
     national_id_masked: '*******LA41',
-    date_of_birth: '1984-06-15',
-    sim_activation_date: '2022-04-10', // ~30 months tenure
+    date_of_birth: '1993-05-12',
+    sim_activation_date: '2021-04-10', // 36m tenure
   },
   {
     id: 'c-esperanca-s3',
     full_name: 'Esperança Teresa Domingos',
-    email: 'bhargownarravula777@gmail.com',
-    msisdn: '+244 923 200 002',
-    national_id_masked: '*******BA09',
-    date_of_birth: '1998-11-20',
-    sim_activation_date: '2023-08-01', // ~15 months tenure
+    email: 'esperanca.domingos@gmail.com',
+    msisdn: '+244 931 000 002',
+    national_id_masked: '*******UE32',
+    date_of_birth: '1998-09-20',
+    sim_activation_date: '2022-09-15', // 24m tenure
   },
   {
     id: 'c-paulo-s7',
     full_name: 'Dr. Paulo Henrique Afonso',
-    email: 'bhargownarravula777@gmail.com',
-    msisdn: '+244 923 300 003',
-    national_id_masked: '*******UE92',
-    date_of_birth: '1979-03-08',
-    sim_activation_date: '2019-01-15', // ~5+ years tenure
+    email: 'paulo.afonso@gmail.com',
+    msisdn: '+244 945 000 003',
+    national_id_masked: '*******BA19',
+    date_of_birth: '1982-11-04',
+    sim_activation_date: '2019-01-20', // 48m tenure
   },
   {
     id: 'c-mateus-low',
     full_name: 'Mateus Kiala',
-    email: 'bhargownarravula777@gmail.com',
-    msisdn: '+244 923 400 004',
-    national_id_masked: '*******ME55',
-    date_of_birth: '2004-03-10',
-    sim_activation_date: '2026-09-01', // 2 months tenure (Starter cap)
+    email: 'mateus.kiala@gmail.com',
+    msisdn: '+244 912 000 004',
+    national_id_masked: '*******MA88',
+    date_of_birth: '2003-02-14',
+    sim_activation_date: '2024-09-10', // 2m tenure (Starter cap / hold)
+  },
+  {
+    id: 'c-rosa-s8',
+    full_name: 'Rosa Maria Bernardo',
+    email: 'rosa.bernardo@gmail.com',
+    msisdn: '+244 924 555 005',
+    national_id_masked: '*******NE72',
+    date_of_birth: '1990-07-22',
+    sim_activation_date: '2020-03-14', // 42m tenure
+  },
+  {
+    id: 'c-alberto-s5',
+    full_name: 'Alberto Sebastião',
+    email: 'alberto.sebastiao@gmail.com',
+    msisdn: '+244 933 666 006',
+    national_id_masked: '*******KO44',
+    date_of_birth: '1986-12-05',
+    sim_activation_date: '2021-11-18', // 34m tenure
+  },
+  {
+    id: 'c-teresa-s6',
+    full_name: 'Teresa de Jesus Neto',
+    email: 'teresa.neto@gmail.com',
+    msisdn: '+244 946 777 007',
+    national_id_masked: '*******ZA81',
+    date_of_birth: '1995-04-18',
+    sim_activation_date: '2022-06-30', // 28m tenure
+  },
+  {
+    id: 'c-manuel-s2',
+    full_name: 'Manuel António da Silva',
+    email: 'manuel.silva@gmail.com',
+    msisdn: '+244 928 888 008',
+    national_id_masked: '*******LO19',
+    date_of_birth: '1991-08-30',
+    sim_activation_date: '2020-10-05', // 46m tenure
   },
 ];

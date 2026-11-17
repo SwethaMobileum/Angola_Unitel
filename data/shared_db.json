@@ -1,0 +1,1532 @@
+{
+  "applications": [
+    {
+      "id": "app-seed-001",
+      "evaluation_id": "eval-seed-001",
+      "equipment_id": "e-1",
+      "price_kz": 18000,
+      "term_months": 6,
+      "rate_pct": 0,
+      "monthly_emi_kz": 3000,
+      "emi_share_pct": 3,
+      "status": "approved",
+      "submitted_by": "00000000-0000-0000-0000-000000000001",
+      "submitted_at": "2026-11-14T08:37:28.060Z",
+      "evaluation": {
+        "id": "eval-seed-001",
+        "customer_id": "c-joao-s1",
+        "analyst_id": "00000000-0000-0000-0000-000000000001",
+        "segment_code": "S1",
+        "segment_overridden": false,
+        "config_version_id": "v1.0-default",
+        "wallet_available": false,
+        "income_band_code": 2,
+        "income_source": "estimated",
+        "status": "scored",
+        "created_at": "2026-11-14T08:37:28.058Z",
+        "customer": {
+          "id": "c-joao-s1",
+          "full_name": "João Manuel Baptista",
+          "email": "joao.baptista@gmail.com",
+          "msisdn": "+244 923 000 001",
+          "national_id_masked": "*******LA41",
+          "date_of_birth": "1993-05-12",
+          "sim_activation_date": "2021-04-10"
+        },
+        "results": {
+          "evaluation_id": "eval-seed-001",
+          "block_points": {
+            "P": {
+              "rawPoints": 14,
+              "earnedPoints": 14,
+              "availableParams": 1
+            },
+            "T": {
+              "rawPoints": 80,
+              "earnedPoints": 66.66666666666667,
+              "availableParams": 6
+            },
+            "W": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "B": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "X": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "A": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            }
+          },
+          "asset_bonus": 2,
+          "total_points": 82.7,
+          "score": 796,
+          "band_label": "Good",
+          "confidence": "high",
+          "overlay_flags": [],
+          "reasons": [
+            "Longstanding mobile subscriber loyalty (30 months tenure).",
+            "Consistent monthly airtime recharges (11 of past 12 months).",
+            "Tangible residential or vehicle asset bonus added (+2 pts)."
+          ],
+          "limit_kz": 50000,
+          "limit_cap_applied": "Income Cap: Low (Min Wage) (Max STARTER)",
+          "score_version": "v2.0-default-points-engine-v2",
+          "computed_at": "2026-11-17T08:37:28.057Z"
+        }
+      },
+      "equipment": {
+        "id": "e-1",
+        "name": "Unitel Feature Phone 2G/3G (FM Radio, Dual SIM)",
+        "category": "Basic Phone",
+        "price_kz": 18000,
+        "active": true
+      }
+    },
+    {
+      "id": "app-seed-002",
+      "evaluation_id": "eval-seed-002",
+      "equipment_id": "e-5",
+      "price_kz": 85000,
+      "term_months": 6,
+      "rate_pct": 0,
+      "monthly_emi_kz": 14167,
+      "emi_share_pct": 8.1,
+      "status": "submitted",
+      "submitted_by": "00000000-0000-0000-0000-000000000001",
+      "submitted_at": "2026-11-15T20:37:28.060Z",
+      "evaluation": {
+        "id": "eval-seed-002",
+        "customer_id": "c-esperanca-s3",
+        "analyst_id": "00000000-0000-0000-0000-000000000001",
+        "segment_code": "S3",
+        "segment_overridden": false,
+        "config_version_id": "v1.0-default",
+        "wallet_available": true,
+        "income_band_code": 3,
+        "income_source": "stated",
+        "status": "scored",
+        "created_at": "2026-11-15T08:37:28.059Z",
+        "customer": {
+          "id": "c-esperanca-s3",
+          "full_name": "Esperança Teresa Domingos",
+          "email": "esperanca.domingos@gmail.com",
+          "msisdn": "+244 931 000 002",
+          "national_id_masked": "*******UE32",
+          "date_of_birth": "1998-09-20",
+          "sim_activation_date": "2022-09-15"
+        },
+        "results": {
+          "evaluation_id": "eval-seed-002",
+          "block_points": {
+            "P": {
+              "rawPoints": 12,
+              "earnedPoints": 12,
+              "availableParams": 1
+            },
+            "T": {
+              "rawPoints": 40,
+              "earnedPoints": 36,
+              "availableParams": 3
+            },
+            "W": {
+              "rawPoints": 42,
+              "earnedPoints": 42,
+              "availableParams": 4
+            },
+            "B": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "X": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "A": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            }
+          },
+          "asset_bonus": 1,
+          "total_points": 91,
+          "score": 846,
+          "band_label": "Very good",
+          "confidence": "high",
+          "overlay_flags": [],
+          "reasons": [
+            "Established telecom relationship (20 months tenure).",
+            "Consistent monthly airtime recharges (10 of past 12 months).",
+            "Active mobile money wallet transactions and digital inflows."
+          ],
+          "limit_kz": 150000,
+          "limit_cap_applied": "Income Cap: Lower-middle (Max STANDARD)",
+          "score_version": "v2.0-default-points-engine-v2",
+          "computed_at": "2026-11-17T08:37:28.059Z"
+        }
+      },
+      "equipment": {
+        "id": "e-5",
+        "name": "Samsung Galaxy A05 4G (64GB)",
+        "category": "Mid Smartphone",
+        "price_kz": 85000,
+        "active": true
+      }
+    },
+    {
+      "id": "app-seed-003",
+      "evaluation_id": "eval-seed-003",
+      "equipment_id": "e-8",
+      "price_kz": 210000,
+      "term_months": 12,
+      "rate_pct": 0,
+      "monthly_emi_kz": 17500,
+      "emi_share_pct": 2.3,
+      "status": "approved",
+      "submitted_by": "00000000-0000-0000-0000-000000000001",
+      "submitted_at": "2026-11-16T13:25:28.060Z",
+      "evaluation": {
+        "id": "eval-seed-003",
+        "customer_id": "c-paulo-s7",
+        "analyst_id": "00000000-0000-0000-0000-000000000001",
+        "segment_code": "S7",
+        "segment_overridden": false,
+        "config_version_id": "v1.0-default",
+        "wallet_available": true,
+        "income_band_code": 5,
+        "income_source": "stated",
+        "status": "scored",
+        "created_at": "2026-11-16T08:37:28.059Z",
+        "customer": {
+          "id": "c-paulo-s7",
+          "full_name": "Dr. Paulo Henrique Afonso",
+          "email": "paulo.afonso@gmail.com",
+          "msisdn": "+244 945 000 003",
+          "national_id_masked": "*******BA19",
+          "date_of_birth": "1982-11-04",
+          "sim_activation_date": "2019-01-20"
+        },
+        "results": {
+          "evaluation_id": "eval-seed-003",
+          "block_points": {
+            "P": {
+              "rawPoints": 10,
+              "earnedPoints": 10,
+              "availableParams": 2
+            },
+            "T": {
+              "rawPoints": 20,
+              "earnedPoints": 20,
+              "availableParams": 3
+            },
+            "W": {
+              "rawPoints": 10,
+              "earnedPoints": 10,
+              "availableParams": 1
+            },
+            "B": {
+              "rawPoints": 48,
+              "earnedPoints": 40,
+              "availableParams": 3
+            },
+            "X": {
+              "rawPoints": 6,
+              "earnedPoints": 6,
+              "availableParams": 2
+            },
+            "A": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            }
+          },
+          "asset_bonus": 5,
+          "total_points": 91,
+          "score": 846,
+          "band_label": "Very good",
+          "confidence": "high",
+          "overlay_flags": [],
+          "reasons": [
+            "Longstanding mobile subscriber loyalty (60 months tenure).",
+            "Consistent monthly airtime recharges (12 of past 12 months).",
+            "Active mobile money wallet transactions and digital inflows."
+          ],
+          "limit_kz": 1000000,
+          "limit_cap_applied": "Score Band: Very good (HIGHEST)",
+          "score_version": "v2.0-default-points-engine-v2",
+          "computed_at": "2026-11-17T08:37:28.059Z"
+        }
+      },
+      "equipment": {
+        "id": "e-8",
+        "name": "Lenovo Tab M10 4G LTE Tablet (64GB)",
+        "category": "Tablet",
+        "price_kz": 210000,
+        "active": true
+      }
+    },
+    {
+      "id": "app-seed-004",
+      "evaluation_id": "eval-seed-004",
+      "equipment_id": "e-6",
+      "price_kz": 120000,
+      "term_months": 6,
+      "rate_pct": 0,
+      "monthly_emi_kz": 20000,
+      "emi_share_pct": 35,
+      "status": "rejected",
+      "submitted_by": "00000000-0000-0000-0000-000000000001",
+      "submitted_at": "2026-11-13T08:37:28.060Z",
+      "evaluation": {
+        "id": "eval-seed-004",
+        "customer_id": "c-mateus-low",
+        "analyst_id": "00000000-0000-0000-0000-000000000001",
+        "segment_code": "S1",
+        "segment_overridden": false,
+        "config_version_id": "v1.0-default",
+        "wallet_available": false,
+        "income_band_code": 1,
+        "income_source": "estimated",
+        "status": "scored",
+        "created_at": "2026-11-13T08:37:28.059Z",
+        "customer": {
+          "id": "c-mateus-low",
+          "full_name": "Mateus Kiala",
+          "email": "mateus.kiala@gmail.com",
+          "msisdn": "+244 912 000 004",
+          "national_id_masked": "*******MA88",
+          "date_of_birth": "2003-02-14",
+          "sim_activation_date": "2024-09-10"
+        },
+        "results": {
+          "evaluation_id": "eval-seed-004",
+          "block_points": {
+            "P": {
+              "rawPoints": 14,
+              "earnedPoints": 14,
+              "availableParams": 1
+            },
+            "T": {
+              "rawPoints": 80,
+              "earnedPoints": 6.666666666666666,
+              "availableParams": 6
+            },
+            "W": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "B": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "X": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "A": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            }
+          },
+          "asset_bonus": 0,
+          "total_points": 20.7,
+          "score": 424,
+          "band_label": "High risk",
+          "confidence": "high",
+          "overlay_flags": [
+            {
+              "ruleKey": "sim_under_6m",
+              "action": "cap_starter",
+              "note": "Tenure on Unitel network under 6 months. Credit limit capped at Starter level."
+            },
+            {
+              "ruleKey": "sim_swap_30d",
+              "action": "hold_review",
+              "note": "Recent SIM swap detected. Held for fraud prevention verification."
+            }
+          ],
+          "reasons": [
+            "Short network tenure (< 6 months) triggers starter cap."
+          ],
+          "limit_kz": 50000,
+          "limit_cap_applied": "Overlay Cap: Starter Level (Max 50,000 Kz)",
+          "score_version": "v2.0-default-points-engine-v2",
+          "computed_at": "2026-11-17T08:37:28.059Z"
+        }
+      },
+      "equipment": {
+        "id": "e-6",
+        "name": "Xiaomi Redmi 13C 4G (128GB)",
+        "category": "Mid Smartphone",
+        "price_kz": 120000,
+        "active": true
+      }
+    },
+    {
+      "id": "app-seed-005",
+      "evaluation_id": "eval-seed-005",
+      "equipment_id": "e-7",
+      "price_kz": 165000,
+      "term_months": 6,
+      "rate_pct": 0,
+      "monthly_emi_kz": 27500,
+      "emi_share_pct": 36.6,
+      "status": "rejected",
+      "submitted_by": "00000000-0000-0000-0000-000000000001",
+      "submitted_at": "2026-11-12T08:37:28.060Z",
+      "evaluation": {
+        "id": "eval-seed-005",
+        "customer_id": "c-rosa-s8",
+        "analyst_id": "00000000-0000-0000-0000-000000000001",
+        "segment_code": "S8",
+        "segment_overridden": false,
+        "config_version_id": "v1.0-default",
+        "wallet_available": true,
+        "income_band_code": 2,
+        "income_source": "stated",
+        "status": "scored",
+        "created_at": "2026-11-12T08:37:28.059Z",
+        "customer": {
+          "id": "c-rosa-s8",
+          "full_name": "Rosa Maria Bernardo",
+          "email": "rosa.bernardo@gmail.com",
+          "msisdn": "+244 924 555 005",
+          "national_id_masked": "*******NE72",
+          "date_of_birth": "1990-07-22",
+          "sim_activation_date": "2020-03-14"
+        },
+        "results": {
+          "evaluation_id": "eval-seed-005",
+          "block_points": {
+            "P": {
+              "rawPoints": 10,
+              "earnedPoints": 10,
+              "availableParams": 2
+            },
+            "T": {
+              "rawPoints": 30,
+              "earnedPoints": 30,
+              "availableParams": 2
+            },
+            "W": {
+              "rawPoints": 34,
+              "earnedPoints": 46,
+              "availableParams": 2
+            },
+            "B": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "X": {
+              "rawPoints": 8,
+              "earnedPoints": 4.4,
+              "availableParams": 2
+            },
+            "A": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            }
+          },
+          "asset_bonus": 0,
+          "total_points": 90.4,
+          "score": 842,
+          "band_label": "Very good",
+          "confidence": "high",
+          "overlay_flags": [],
+          "reasons": [
+            "Longstanding mobile subscriber loyalty (42 months tenure).",
+            "Consistent monthly airtime recharges (11 of past 12 months).",
+            "Active mobile money wallet transactions and digital inflows."
+          ],
+          "limit_kz": 50000,
+          "limit_cap_applied": "Income Cap: Low (Min Wage) (Max STARTER)",
+          "score_version": "v2.0-default-points-engine-v2",
+          "computed_at": "2026-11-17T08:37:28.059Z"
+        }
+      },
+      "equipment": {
+        "id": "e-7",
+        "name": "Samsung Galaxy A15 4G (128GB, AMOLED)",
+        "category": "High Smartphone",
+        "price_kz": 165000,
+        "active": true
+      }
+    },
+    {
+      "id": "app-seed-006",
+      "evaluation_id": "eval-seed-006",
+      "equipment_id": "e-3",
+      "price_kz": 65000,
+      "term_months": 6,
+      "rate_pct": 0,
+      "monthly_emi_kz": 10833,
+      "emi_share_pct": 6.2,
+      "status": "submitted",
+      "submitted_by": "00000000-0000-0000-0000-000000000001",
+      "submitted_at": "2026-11-16T03:49:28.060Z",
+      "evaluation": {
+        "id": "eval-seed-006",
+        "customer_id": "c-alberto-s5",
+        "analyst_id": "00000000-0000-0000-0000-000000000001",
+        "segment_code": "S5",
+        "segment_overridden": false,
+        "config_version_id": "v1.0-default",
+        "wallet_available": false,
+        "income_band_code": 3,
+        "income_source": "stated",
+        "status": "scored",
+        "created_at": "2026-11-16T03:49:28.059Z",
+        "customer": {
+          "id": "c-alberto-s5",
+          "full_name": "Alberto Sebastião",
+          "email": "alberto.sebastiao@gmail.com",
+          "msisdn": "+244 933 666 006",
+          "national_id_masked": "*******KO44",
+          "date_of_birth": "1986-12-05",
+          "sim_activation_date": "2021-11-18"
+        },
+        "results": {
+          "evaluation_id": "eval-seed-006",
+          "block_points": {
+            "P": {
+              "rawPoints": 12,
+              "earnedPoints": 12,
+              "availableParams": 1
+            },
+            "T": {
+              "rawPoints": 25,
+              "earnedPoints": 25,
+              "availableParams": 3
+            },
+            "W": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "B": {
+              "rawPoints": 50,
+              "earnedPoints": 52.25,
+              "availableParams": 6
+            },
+            "X": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "A": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            }
+          },
+          "asset_bonus": 2,
+          "total_points": 91.3,
+          "score": 848,
+          "band_label": "Very good",
+          "confidence": "high",
+          "overlay_flags": [],
+          "reasons": [
+            "Longstanding mobile subscriber loyalty (34 months tenure).",
+            "Consistent monthly airtime recharges (11 of past 12 months).",
+            "Verified formal banking relationship with regular account deposits."
+          ],
+          "limit_kz": 150000,
+          "limit_cap_applied": "Income Cap: Lower-middle (Max STANDARD)",
+          "score_version": "v2.0-default-points-engine-v2",
+          "computed_at": "2026-11-17T08:37:28.059Z"
+        }
+      },
+      "equipment": {
+        "id": "e-3",
+        "name": "Solar Home Lighting & Phone Charging Kit",
+        "category": "Solar Appliance",
+        "price_kz": 65000,
+        "active": true
+      }
+    },
+    {
+      "id": "app-seed-007",
+      "evaluation_id": "eval-seed-007",
+      "equipment_id": "e-4",
+      "price_kz": 35000,
+      "term_months": 6,
+      "rate_pct": 0,
+      "monthly_emi_kz": 5833,
+      "emi_share_pct": 3.3,
+      "status": "saved",
+      "submitted_by": "00000000-0000-0000-0000-000000000001",
+      "submitted_at": "2026-11-16T20:37:28.060Z",
+      "evaluation": {
+        "id": "eval-seed-007",
+        "customer_id": "c-teresa-s6",
+        "analyst_id": "00000000-0000-0000-0000-000000000001",
+        "segment_code": "S6",
+        "segment_overridden": false,
+        "config_version_id": "v1.0-default",
+        "wallet_available": true,
+        "income_band_code": 3,
+        "income_source": "estimated",
+        "status": "scored",
+        "created_at": "2026-11-16T20:37:28.059Z",
+        "customer": {
+          "id": "c-teresa-s6",
+          "full_name": "Teresa de Jesus Neto",
+          "email": "teresa.neto@gmail.com",
+          "msisdn": "+244 946 777 007",
+          "national_id_masked": "*******ZA81",
+          "date_of_birth": "1995-04-18",
+          "sim_activation_date": "2022-06-30"
+        },
+        "results": {
+          "evaluation_id": "eval-seed-007",
+          "block_points": {
+            "P": {
+              "rawPoints": 10,
+              "earnedPoints": 10,
+              "availableParams": 1
+            },
+            "T": {
+              "rawPoints": 22,
+              "earnedPoints": 22,
+              "availableParams": 3
+            },
+            "W": {
+              "rawPoints": 22,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "B": {
+              "rawPoints": 40,
+              "earnedPoints": 46.5,
+              "availableParams": 2
+            },
+            "X": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "A": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            }
+          },
+          "asset_bonus": 0,
+          "total_points": 78.5,
+          "score": 771,
+          "band_label": "Good",
+          "confidence": "high",
+          "overlay_flags": [],
+          "reasons": [
+            "Longstanding mobile subscriber loyalty (28 months tenure).",
+            "Consistent monthly airtime recharges (12 of past 12 months).",
+            "Verified formal banking relationship with regular account deposits."
+          ],
+          "limit_kz": 150000,
+          "limit_cap_applied": "Income Cap: Lower-middle (Max STANDARD)",
+          "score_version": "v2.0-default-points-engine-v2",
+          "computed_at": "2026-11-17T08:37:28.059Z"
+        }
+      },
+      "equipment": {
+        "id": "e-4",
+        "name": "4G LTE Portable Pocket Wi-Fi Router Kit",
+        "category": "Network Device",
+        "price_kz": 35000,
+        "active": true
+      }
+    },
+    {
+      "id": "app-seed-008",
+      "evaluation_id": "eval-seed-008",
+      "equipment_id": "e-2",
+      "price_kz": 45000,
+      "term_months": 6,
+      "rate_pct": 0,
+      "monthly_emi_kz": 7500,
+      "emi_share_pct": 7.5,
+      "status": "purchased",
+      "submitted_by": "00000000-0000-0000-0000-000000000001",
+      "submitted_at": "2026-11-11T08:37:28.060Z",
+      "purchased_at": "2026-11-11T20:37:28.060Z",
+      "evaluation": {
+        "id": "eval-seed-008",
+        "customer_id": "c-manuel-s2",
+        "analyst_id": "00000000-0000-0000-0000-000000000001",
+        "segment_code": "S2",
+        "segment_overridden": false,
+        "config_version_id": "v1.0-default",
+        "wallet_available": true,
+        "income_band_code": 2,
+        "income_source": "estimated",
+        "status": "scored",
+        "created_at": "2026-11-11T08:37:28.059Z",
+        "customer": {
+          "id": "c-manuel-s2",
+          "full_name": "Manuel António da Silva",
+          "email": "manuel.silva@gmail.com",
+          "msisdn": "+244 928 888 008",
+          "national_id_masked": "*******LO19",
+          "date_of_birth": "1991-08-30",
+          "sim_activation_date": "2020-10-05"
+        },
+        "results": {
+          "evaluation_id": "eval-seed-008",
+          "block_points": {
+            "P": {
+              "rawPoints": 12,
+              "earnedPoints": 12,
+              "availableParams": 1
+            },
+            "T": {
+              "rawPoints": 50,
+              "earnedPoints": 50,
+              "availableParams": 3
+            },
+            "W": {
+              "rawPoints": 32,
+              "earnedPoints": 32,
+              "availableParams": 1
+            },
+            "B": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "X": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            },
+            "A": {
+              "rawPoints": 0,
+              "earnedPoints": 0,
+              "availableParams": 0
+            }
+          },
+          "asset_bonus": 3,
+          "total_points": 97,
+          "score": 882,
+          "band_label": "Very good",
+          "confidence": "high",
+          "overlay_flags": [],
+          "reasons": [
+            "Longstanding mobile subscriber loyalty (46 months tenure).",
+            "Consistent monthly airtime recharges (12 of past 12 months).",
+            "Active mobile money wallet transactions and digital inflows."
+          ],
+          "limit_kz": 50000,
+          "limit_cap_applied": "Income Cap: Low (Min Wage) (Max STARTER)",
+          "score_version": "v2.0-default-points-engine-v2",
+          "computed_at": "2026-11-17T08:37:28.059Z"
+        }
+      },
+      "equipment": {
+        "id": "e-2",
+        "name": "Unitel Smart 4G (Android Go, 32GB)",
+        "category": "Entry Smartphone",
+        "price_kz": 45000,
+        "active": true
+      }
+    }
+  ],
+  "approvals": [
+    {
+      "id": "appr-seed-001",
+      "application_id": "app-seed-001",
+      "approver_id": "00000000-0000-0000-0000-000000000002",
+      "decision": "approved",
+      "reason": "Affordable starter loan within 50,000 Kz cap. Long 36m tenure and consistent topups.",
+      "decided_at": "2026-11-14T13:25:28.060Z"
+    },
+    {
+      "id": "appr-seed-003",
+      "application_id": "app-seed-003",
+      "approver_id": "00000000-0000-0000-0000-000000000002",
+      "decision": "approved",
+      "reason": "Formal government payroll direct deposit verified in Banco BAI. High credit score (790).",
+      "decided_at": "2026-11-16T20:37:28.060Z"
+    },
+    {
+      "id": "appr-seed-004",
+      "application_id": "app-seed-004",
+      "approver_id": "00000000-0000-0000-0000-000000000002",
+      "decision": "rejected",
+      "reason": "Underwriting hold: SIM card replaced 12 days ago. Minimum 30-day seasoning required.",
+      "decided_at": "2026-11-13T11:01:28.060Z"
+    },
+    {
+      "id": "appr-seed-005",
+      "application_id": "app-seed-005",
+      "approver_id": "00000000-0000-0000-0000-000000000002",
+      "decision": "rejected",
+      "reason": "Monthly EMI (27,500 Kz) exceeds regulatory 30% debt-service cap for income band 2.",
+      "decided_at": "2026-11-12T13:25:28.060Z"
+    },
+    {
+      "id": "appr-seed-008",
+      "application_id": "app-seed-008",
+      "approver_id": "00000000-0000-0000-0000-000000000002",
+      "decision": "approved",
+      "reason": "Verified USSD wallet activity and 46-month telecom tenure. Approved for collection.",
+      "decided_at": "2026-11-11T13:25:28.060Z"
+    }
+  ],
+  "evaluations": [
+    {
+      "id": "eval-seed-001",
+      "customer_id": "c-joao-s1",
+      "analyst_id": "00000000-0000-0000-0000-000000000001",
+      "segment_code": "S1",
+      "segment_overridden": false,
+      "config_version_id": "v1.0-default",
+      "wallet_available": false,
+      "income_band_code": 2,
+      "income_source": "estimated",
+      "status": "scored",
+      "created_at": "2026-11-14T08:37:28.060Z",
+      "customer": {
+        "id": "c-joao-s1",
+        "full_name": "João Manuel Baptista",
+        "email": "joao.baptista@gmail.com",
+        "msisdn": "+244 923 000 001",
+        "national_id_masked": "*******LA41",
+        "date_of_birth": "1993-05-12",
+        "sim_activation_date": "2021-04-10"
+      },
+      "results": {
+        "evaluation_id": "eval-seed-001",
+        "block_points": {
+          "P": {
+            "rawPoints": 14,
+            "earnedPoints": 14,
+            "availableParams": 1
+          },
+          "T": {
+            "rawPoints": 80,
+            "earnedPoints": 66.66666666666667,
+            "availableParams": 6
+          },
+          "W": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "B": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "X": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "A": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          }
+        },
+        "asset_bonus": 2,
+        "total_points": 82.7,
+        "score": 796,
+        "band_label": "Good",
+        "confidence": "high",
+        "overlay_flags": [],
+        "reasons": [
+          "Longstanding mobile subscriber loyalty (30 months tenure).",
+          "Consistent monthly airtime recharges (11 of past 12 months).",
+          "Tangible residential or vehicle asset bonus added (+2 pts)."
+        ],
+        "limit_kz": 50000,
+        "limit_cap_applied": "Income Cap: Low (Min Wage) (Max STARTER)",
+        "score_version": "v2.0-default-points-engine-v2",
+        "computed_at": "2026-11-17T08:37:28.060Z"
+      }
+    },
+    {
+      "id": "eval-seed-002",
+      "customer_id": "c-esperanca-s3",
+      "analyst_id": "00000000-0000-0000-0000-000000000001",
+      "segment_code": "S3",
+      "segment_overridden": false,
+      "config_version_id": "v1.0-default",
+      "wallet_available": true,
+      "income_band_code": 3,
+      "income_source": "stated",
+      "status": "scored",
+      "created_at": "2026-11-15T08:37:28.060Z",
+      "customer": {
+        "id": "c-esperanca-s3",
+        "full_name": "Esperança Teresa Domingos",
+        "email": "esperanca.domingos@gmail.com",
+        "msisdn": "+244 931 000 002",
+        "national_id_masked": "*******UE32",
+        "date_of_birth": "1998-09-20",
+        "sim_activation_date": "2022-09-15"
+      },
+      "results": {
+        "evaluation_id": "eval-seed-002",
+        "block_points": {
+          "P": {
+            "rawPoints": 12,
+            "earnedPoints": 12,
+            "availableParams": 1
+          },
+          "T": {
+            "rawPoints": 40,
+            "earnedPoints": 36,
+            "availableParams": 3
+          },
+          "W": {
+            "rawPoints": 42,
+            "earnedPoints": 42,
+            "availableParams": 4
+          },
+          "B": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "X": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "A": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          }
+        },
+        "asset_bonus": 1,
+        "total_points": 91,
+        "score": 846,
+        "band_label": "Very good",
+        "confidence": "high",
+        "overlay_flags": [],
+        "reasons": [
+          "Established telecom relationship (20 months tenure).",
+          "Consistent monthly airtime recharges (10 of past 12 months).",
+          "Active mobile money wallet transactions and digital inflows."
+        ],
+        "limit_kz": 150000,
+        "limit_cap_applied": "Income Cap: Lower-middle (Max STANDARD)",
+        "score_version": "v2.0-default-points-engine-v2",
+        "computed_at": "2026-11-17T08:37:28.060Z"
+      }
+    },
+    {
+      "id": "eval-seed-003",
+      "customer_id": "c-paulo-s7",
+      "analyst_id": "00000000-0000-0000-0000-000000000001",
+      "segment_code": "S7",
+      "segment_overridden": false,
+      "config_version_id": "v1.0-default",
+      "wallet_available": true,
+      "income_band_code": 5,
+      "income_source": "stated",
+      "status": "scored",
+      "created_at": "2026-11-16T08:37:28.060Z",
+      "customer": {
+        "id": "c-paulo-s7",
+        "full_name": "Dr. Paulo Henrique Afonso",
+        "email": "paulo.afonso@gmail.com",
+        "msisdn": "+244 945 000 003",
+        "national_id_masked": "*******BA19",
+        "date_of_birth": "1982-11-04",
+        "sim_activation_date": "2019-01-20"
+      },
+      "results": {
+        "evaluation_id": "eval-seed-003",
+        "block_points": {
+          "P": {
+            "rawPoints": 10,
+            "earnedPoints": 10,
+            "availableParams": 2
+          },
+          "T": {
+            "rawPoints": 20,
+            "earnedPoints": 20,
+            "availableParams": 3
+          },
+          "W": {
+            "rawPoints": 10,
+            "earnedPoints": 10,
+            "availableParams": 1
+          },
+          "B": {
+            "rawPoints": 48,
+            "earnedPoints": 40,
+            "availableParams": 3
+          },
+          "X": {
+            "rawPoints": 6,
+            "earnedPoints": 6,
+            "availableParams": 2
+          },
+          "A": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          }
+        },
+        "asset_bonus": 5,
+        "total_points": 91,
+        "score": 846,
+        "band_label": "Very good",
+        "confidence": "high",
+        "overlay_flags": [],
+        "reasons": [
+          "Longstanding mobile subscriber loyalty (60 months tenure).",
+          "Consistent monthly airtime recharges (12 of past 12 months).",
+          "Active mobile money wallet transactions and digital inflows."
+        ],
+        "limit_kz": 1000000,
+        "limit_cap_applied": "Score Band: Very good (HIGHEST)",
+        "score_version": "v2.0-default-points-engine-v2",
+        "computed_at": "2026-11-17T08:37:28.060Z"
+      }
+    },
+    {
+      "id": "eval-seed-004",
+      "customer_id": "c-mateus-low",
+      "analyst_id": "00000000-0000-0000-0000-000000000001",
+      "segment_code": "S1",
+      "segment_overridden": false,
+      "config_version_id": "v1.0-default",
+      "wallet_available": false,
+      "income_band_code": 1,
+      "income_source": "estimated",
+      "status": "scored",
+      "created_at": "2026-11-13T08:37:28.060Z",
+      "customer": {
+        "id": "c-mateus-low",
+        "full_name": "Mateus Kiala",
+        "email": "mateus.kiala@gmail.com",
+        "msisdn": "+244 912 000 004",
+        "national_id_masked": "*******MA88",
+        "date_of_birth": "2003-02-14",
+        "sim_activation_date": "2024-09-10"
+      },
+      "results": {
+        "evaluation_id": "eval-seed-004",
+        "block_points": {
+          "P": {
+            "rawPoints": 14,
+            "earnedPoints": 14,
+            "availableParams": 1
+          },
+          "T": {
+            "rawPoints": 80,
+            "earnedPoints": 6.666666666666666,
+            "availableParams": 6
+          },
+          "W": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "B": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "X": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "A": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          }
+        },
+        "asset_bonus": 0,
+        "total_points": 20.7,
+        "score": 424,
+        "band_label": "High risk",
+        "confidence": "high",
+        "overlay_flags": [
+          {
+            "ruleKey": "sim_under_6m",
+            "action": "cap_starter",
+            "note": "Tenure on Unitel network under 6 months. Credit limit capped at Starter level."
+          },
+          {
+            "ruleKey": "sim_swap_30d",
+            "action": "hold_review",
+            "note": "Recent SIM swap detected. Held for fraud prevention verification."
+          }
+        ],
+        "reasons": [
+          "Short network tenure (< 6 months) triggers starter cap."
+        ],
+        "limit_kz": 50000,
+        "limit_cap_applied": "Overlay Cap: Starter Level (Max 50,000 Kz)",
+        "score_version": "v2.0-default-points-engine-v2",
+        "computed_at": "2026-11-17T08:37:28.060Z"
+      }
+    },
+    {
+      "id": "eval-seed-005",
+      "customer_id": "c-rosa-s8",
+      "analyst_id": "00000000-0000-0000-0000-000000000001",
+      "segment_code": "S8",
+      "segment_overridden": false,
+      "config_version_id": "v1.0-default",
+      "wallet_available": true,
+      "income_band_code": 2,
+      "income_source": "stated",
+      "status": "scored",
+      "created_at": "2026-11-12T08:37:28.060Z",
+      "customer": {
+        "id": "c-rosa-s8",
+        "full_name": "Rosa Maria Bernardo",
+        "email": "rosa.bernardo@gmail.com",
+        "msisdn": "+244 924 555 005",
+        "national_id_masked": "*******NE72",
+        "date_of_birth": "1990-07-22",
+        "sim_activation_date": "2020-03-14"
+      },
+      "results": {
+        "evaluation_id": "eval-seed-005",
+        "block_points": {
+          "P": {
+            "rawPoints": 10,
+            "earnedPoints": 10,
+            "availableParams": 2
+          },
+          "T": {
+            "rawPoints": 30,
+            "earnedPoints": 30,
+            "availableParams": 2
+          },
+          "W": {
+            "rawPoints": 34,
+            "earnedPoints": 46,
+            "availableParams": 2
+          },
+          "B": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "X": {
+            "rawPoints": 8,
+            "earnedPoints": 4.4,
+            "availableParams": 2
+          },
+          "A": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          }
+        },
+        "asset_bonus": 0,
+        "total_points": 90.4,
+        "score": 842,
+        "band_label": "Very good",
+        "confidence": "high",
+        "overlay_flags": [],
+        "reasons": [
+          "Longstanding mobile subscriber loyalty (42 months tenure).",
+          "Consistent monthly airtime recharges (11 of past 12 months).",
+          "Active mobile money wallet transactions and digital inflows."
+        ],
+        "limit_kz": 50000,
+        "limit_cap_applied": "Income Cap: Low (Min Wage) (Max STARTER)",
+        "score_version": "v2.0-default-points-engine-v2",
+        "computed_at": "2026-11-17T08:37:28.060Z"
+      }
+    },
+    {
+      "id": "eval-seed-006",
+      "customer_id": "c-alberto-s5",
+      "analyst_id": "00000000-0000-0000-0000-000000000001",
+      "segment_code": "S5",
+      "segment_overridden": false,
+      "config_version_id": "v1.0-default",
+      "wallet_available": false,
+      "income_band_code": 3,
+      "income_source": "stated",
+      "status": "scored",
+      "created_at": "2026-11-16T03:49:28.060Z",
+      "customer": {
+        "id": "c-alberto-s5",
+        "full_name": "Alberto Sebastião",
+        "email": "alberto.sebastiao@gmail.com",
+        "msisdn": "+244 933 666 006",
+        "national_id_masked": "*******KO44",
+        "date_of_birth": "1986-12-05",
+        "sim_activation_date": "2021-11-18"
+      },
+      "results": {
+        "evaluation_id": "eval-seed-006",
+        "block_points": {
+          "P": {
+            "rawPoints": 12,
+            "earnedPoints": 12,
+            "availableParams": 1
+          },
+          "T": {
+            "rawPoints": 25,
+            "earnedPoints": 25,
+            "availableParams": 3
+          },
+          "W": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "B": {
+            "rawPoints": 50,
+            "earnedPoints": 52.25,
+            "availableParams": 6
+          },
+          "X": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "A": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          }
+        },
+        "asset_bonus": 2,
+        "total_points": 91.3,
+        "score": 848,
+        "band_label": "Very good",
+        "confidence": "high",
+        "overlay_flags": [],
+        "reasons": [
+          "Longstanding mobile subscriber loyalty (34 months tenure).",
+          "Consistent monthly airtime recharges (11 of past 12 months).",
+          "Verified formal banking relationship with regular account deposits."
+        ],
+        "limit_kz": 150000,
+        "limit_cap_applied": "Income Cap: Lower-middle (Max STANDARD)",
+        "score_version": "v2.0-default-points-engine-v2",
+        "computed_at": "2026-11-17T08:37:28.060Z"
+      }
+    },
+    {
+      "id": "eval-seed-007",
+      "customer_id": "c-teresa-s6",
+      "analyst_id": "00000000-0000-0000-0000-000000000001",
+      "segment_code": "S6",
+      "segment_overridden": false,
+      "config_version_id": "v1.0-default",
+      "wallet_available": true,
+      "income_band_code": 3,
+      "income_source": "estimated",
+      "status": "scored",
+      "created_at": "2026-11-16T20:37:28.060Z",
+      "customer": {
+        "id": "c-teresa-s6",
+        "full_name": "Teresa de Jesus Neto",
+        "email": "teresa.neto@gmail.com",
+        "msisdn": "+244 946 777 007",
+        "national_id_masked": "*******ZA81",
+        "date_of_birth": "1995-04-18",
+        "sim_activation_date": "2022-06-30"
+      },
+      "results": {
+        "evaluation_id": "eval-seed-007",
+        "block_points": {
+          "P": {
+            "rawPoints": 10,
+            "earnedPoints": 10,
+            "availableParams": 1
+          },
+          "T": {
+            "rawPoints": 22,
+            "earnedPoints": 22,
+            "availableParams": 3
+          },
+          "W": {
+            "rawPoints": 22,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "B": {
+            "rawPoints": 40,
+            "earnedPoints": 46.5,
+            "availableParams": 2
+          },
+          "X": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "A": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          }
+        },
+        "asset_bonus": 0,
+        "total_points": 78.5,
+        "score": 771,
+        "band_label": "Good",
+        "confidence": "high",
+        "overlay_flags": [],
+        "reasons": [
+          "Longstanding mobile subscriber loyalty (28 months tenure).",
+          "Consistent monthly airtime recharges (12 of past 12 months).",
+          "Verified formal banking relationship with regular account deposits."
+        ],
+        "limit_kz": 150000,
+        "limit_cap_applied": "Income Cap: Lower-middle (Max STANDARD)",
+        "score_version": "v2.0-default-points-engine-v2",
+        "computed_at": "2026-11-17T08:37:28.060Z"
+      }
+    },
+    {
+      "id": "eval-seed-008",
+      "customer_id": "c-manuel-s2",
+      "analyst_id": "00000000-0000-0000-0000-000000000001",
+      "segment_code": "S2",
+      "segment_overridden": false,
+      "config_version_id": "v1.0-default",
+      "wallet_available": true,
+      "income_band_code": 2,
+      "income_source": "estimated",
+      "status": "scored",
+      "created_at": "2026-11-11T08:37:28.060Z",
+      "customer": {
+        "id": "c-manuel-s2",
+        "full_name": "Manuel António da Silva",
+        "email": "manuel.silva@gmail.com",
+        "msisdn": "+244 928 888 008",
+        "national_id_masked": "*******LO19",
+        "date_of_birth": "1991-08-30",
+        "sim_activation_date": "2020-10-05"
+      },
+      "results": {
+        "evaluation_id": "eval-seed-008",
+        "block_points": {
+          "P": {
+            "rawPoints": 12,
+            "earnedPoints": 12,
+            "availableParams": 1
+          },
+          "T": {
+            "rawPoints": 50,
+            "earnedPoints": 50,
+            "availableParams": 3
+          },
+          "W": {
+            "rawPoints": 32,
+            "earnedPoints": 32,
+            "availableParams": 1
+          },
+          "B": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "X": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          },
+          "A": {
+            "rawPoints": 0,
+            "earnedPoints": 0,
+            "availableParams": 0
+          }
+        },
+        "asset_bonus": 3,
+        "total_points": 97,
+        "score": 882,
+        "band_label": "Very good",
+        "confidence": "high",
+        "overlay_flags": [],
+        "reasons": [
+          "Longstanding mobile subscriber loyalty (46 months tenure).",
+          "Consistent monthly airtime recharges (12 of past 12 months).",
+          "Active mobile money wallet transactions and digital inflows."
+        ],
+        "limit_kz": 50000,
+        "limit_cap_applied": "Income Cap: Low (Min Wage) (Max STARTER)",
+        "score_version": "v2.0-default-points-engine-v2",
+        "computed_at": "2026-11-17T08:37:28.060Z"
+      }
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notif-001",
+      "application_id": "app-seed-001",
+      "to_email": "maria.mendes@unitel.ao",
+      "kind": "submission_notice",
+      "subject": "New Loan Application Submitted (CR-001) - João Manuel Baptista",
+      "body": "Application for Unitel Feature Phone (18,000 Kz) submitted by Tomas Silva (Applicant). Proxy score: 620 (Acceptable).",
+      "status": "logged",
+      "created_at": "2026-11-14T08:37:28.060Z"
+    },
+    {
+      "id": "notif-002",
+      "application_id": "app-seed-001",
+      "to_email": "tomas.silva@unitel.ao",
+      "kind": "approval_notice",
+      "subject": "Loan Application Approved (CR-001) - João Manuel Baptista",
+      "body": "Dra. Maria Mendes approved application CR-001 for 18,000 Kz over 6 months (EMI: 3,000 Kz/mo).",
+      "status": "logged",
+      "created_at": "2026-11-14T13:25:28.060Z"
+    },
+    {
+      "id": "notif-003",
+      "application_id": "app-seed-002",
+      "to_email": "maria.mendes@unitel.ao",
+      "kind": "submission_notice",
+      "subject": "New Loan Application Awaiting Approval (CR-002) - Esperança Teresa Domingos",
+      "body": "Application for Samsung Galaxy A05 (85,000 Kz) submitted by Tomas Silva. Proxy score: 685 (Acceptable).",
+      "status": "logged",
+      "created_at": "2026-11-15T20:37:28.060Z"
+    },
+    {
+      "id": "notif-004",
+      "application_id": "app-seed-003",
+      "to_email": "tomas.silva@unitel.ao",
+      "kind": "approval_notice",
+      "subject": "Loan Application Approved (CR-003) - Dr. Paulo Henrique Afonso",
+      "body": "Dra. Maria Mendes approved application CR-003 for Lenovo Tab M10 (210,000 Kz).",
+      "status": "logged",
+      "created_at": "2026-11-16T20:37:28.060Z"
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": 1,
+      "at": "2026-11-14T06:13:28.060Z",
+      "actor_name": "Tomas Silva (Applicant)",
+      "action": "create_evaluation",
+      "entity": "evaluations",
+      "entity_id": "eval-seed-001",
+      "details": {
+        "customer": "João Manuel Baptista",
+        "segment": "S1",
+        "score": 620,
+        "confidence": "medium"
+      }
+    },
+    {
+      "id": 2,
+      "at": "2026-11-14T08:37:28.060Z",
+      "actor_name": "Tomas Silva (Applicant)",
+      "action": "submit_loan_application",
+      "entity": "loan_applications",
+      "entity_id": "app-seed-001",
+      "details": {
+        "equipment": "Unitel Feature Phone",
+        "price_kz": 18000,
+        "term_months": 6,
+        "monthly_emi": 3000
+      }
+    },
+    {
+      "id": 3,
+      "at": "2026-11-14T13:25:28.060Z",
+      "actor_name": "Dra. Maria Mendes (Approver)",
+      "action": "decision_approved",
+      "entity": "approvals",
+      "entity_id": "appr-seed-001",
+      "details": {
+        "application_id": "app-seed-001",
+        "reason": "Affordable starter loan within 50,000 Kz cap. Long 36m tenure and consistent topups."
+      }
+    },
+    {
+      "id": 4,
+      "at": "2026-11-15T08:37:28.060Z",
+      "actor_name": "Tomas Silva (Applicant)",
+      "action": "create_evaluation",
+      "entity": "evaluations",
+      "entity_id": "eval-seed-002",
+      "details": {
+        "customer": "Esperança Teresa Domingos",
+        "segment": "S3",
+        "score": 685,
+        "confidence": "high"
+      }
+    },
+    {
+      "id": 5,
+      "at": "2026-11-15T20:37:28.060Z",
+      "actor_name": "Tomas Silva (Applicant)",
+      "action": "submit_loan_application",
+      "entity": "loan_applications",
+      "entity_id": "app-seed-002",
+      "details": {
+        "equipment": "Samsung Galaxy A05",
+        "price_kz": 85000,
+        "term_months": 6,
+        "monthly_emi": 14167
+      }
+    },
+    {
+      "id": 6,
+      "at": "2026-11-16T08:37:28.060Z",
+      "actor_name": "Tomas Silva (Applicant)",
+      "action": "create_evaluation",
+      "entity": "evaluations",
+      "entity_id": "eval-seed-003",
+      "details": {
+        "customer": "Dr. Paulo Henrique Afonso",
+        "segment": "S7",
+        "score": 790,
+        "confidence": "high"
+      }
+    },
+    {
+      "id": 7,
+      "at": "2026-11-16T13:25:28.060Z",
+      "actor_name": "Tomas Silva (Applicant)",
+      "action": "submit_loan_application",
+      "entity": "loan_applications",
+      "entity_id": "app-seed-003",
+      "details": {
+        "equipment": "Lenovo Tab M10",
+        "price_kz": 210000,
+        "term_months": 12,
+        "monthly_emi": 17500
+      }
+    },
+    {
+      "id": 8,
+      "at": "2026-11-16T20:37:28.060Z",
+      "actor_name": "Dra. Maria Mendes (Approver)",
+      "action": "decision_approved",
+      "entity": "approvals",
+      "entity_id": "appr-seed-003",
+      "details": {
+        "application_id": "app-seed-003",
+        "reason": "Formal government payroll direct deposit verified in Banco BAI. High credit score (790)."
+      }
+    }
+  ],
+  "lastUpdated": "2026-11-17T08:37:28.060Z"
+}

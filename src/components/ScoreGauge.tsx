@@ -25,18 +25,18 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({
   const arcLength = Math.PI * radius;
   const strokeDashoffset = arcLength - normalizedPct * arcLength;
 
-  // Determine color based on score band
-  let scoreColor = '#EA580C'; // Unitel warm red/orange for high risk
+  // Determine color based on score band using corporate tokens
+  let scoreColor = '#F26B1D'; // Orange default
   if (clampedScore >= 800) {
-    scoreColor = '#1F3A5F'; // Very good (800-900)
+    scoreColor = '#22A06B'; // Green (800-900)
   } else if (clampedScore >= 700) {
-    scoreColor = '#059669'; // Good (700-799)
+    scoreColor = '#14808A'; // Teal (700-799)
   } else if (clampedScore >= 600) {
-    scoreColor = '#0284C7'; // Acceptable (600-699)
+    scoreColor = '#D14F00'; // Deep Orange / Acceptable (600-699)
   } else if (clampedScore >= 500) {
-    scoreColor = '#F97316'; // Thin/weak (500-599)
+    scoreColor = '#F26B1D'; // Orange (500-599)
   } else {
-    scoreColor = '#DC2626'; // High risk (300-499)
+    scoreColor = '#C8372D'; // Red (300-499)
   }
 
   return (

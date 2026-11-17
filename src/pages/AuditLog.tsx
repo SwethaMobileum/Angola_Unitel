@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { COPY } from '../copy/en';
 import { AuditLogEntry } from '../types';
 import { getStoredAuditLogs } from '../lib/loans';
+import { useSyncDatabase } from '../lib/syncClient';
 import {
   History,
   Search,
@@ -11,6 +12,7 @@ import {
   FileCode,
   X,
 } from 'lucide-react';
+import { Modal } from '../components/Modal';
 
 export const AuditLog: React.FC = () => {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
@@ -21,6 +23,10 @@ export const AuditLog: React.FC = () => {
   useEffect(() => {
     setLogs(getStoredAuditLogs());
   }, []);
+
+  useSyncDatabase(() => {
+    setLogs(getStoredAuditLogs());
+  });
 
   const filtered = logs.filter((log) => {
     const q = search.toLowerCase();
@@ -43,7 +49,7 @@ export const AuditLog: React.FC = () => {
       </div>
 
       {/* Compliance Guarantee Banner */}
-      <div className="p-4 rounded-xl bg-orange-soft border-2 border-orange-border text-navy flex items-start gap-3 shadow-xs">
+      <div className="p-4 rounded-xl bg-orange-soft border-2 border-orange text-navy flex items-start gap-3 shadow-xs">
         <ShieldCheck className="w-5 h-5 text-orange shrink-0 mt-0.5" />
         <div className="text-xs space-y-1">
           <span className="font-bold text-navy uppercase tracking-wider block">
@@ -56,7 +62,7 @@ export const AuditLog: React.FC = () => {
       </div>
 
       {/* Search and Filters */}
-      <div className="card-warm p-4 bg-white flex flex-wrap items-center justify-between gap-4">
+      <div className="card-warm p-4 bg-white border-2 border-orange flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
           <div className="relative flex-1 max-w-sm">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -87,7 +93,7 @@ export const AuditLog: React.FC = () => {
       </div>
 
       {/* Audit Log Table */}
-      <div className="card-warm bg-white overflow-hidden shadow-xs">
+      <div className="card-warm bg-white border-2 border-orange overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-xs">
             <thead className="bg-[#FAF8F5] text-navy font-bold border-b border-orange-border/70">
@@ -180,9 +186,13 @@ export const AuditLog: React.FC = () => {
       </div>
 
       {/* Inspection Modal */}
-      {inspectEntry && (
-        <div className="fixed inset-0 z-50 bg-navy/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 p-6 space-y-4">
+      <Modal
+        isOpen={!!inspectEntry}
+        onClose={() => setInspectEntry(null)}
+        className="bg-white rounded-2xl max-w-2xl md:max-w-3xl w-full shadow-2xl border-2 border-orange/40 p-6 sm:p-7 space-y-4 animate-in zoom-in-95 duration-150"
+      >
+        {inspectEntry && (
+          <div>
             <div className="flex items-start justify-between border-b border-slate-100 pb-3">
               <div>
                 <span className="text-xs font-mono font-bold text-orange uppercase tracking-wider">
@@ -236,8 +246,8 @@ export const AuditLog: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 };

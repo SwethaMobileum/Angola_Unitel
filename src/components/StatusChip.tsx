@@ -26,7 +26,12 @@ export const StatusChip: React.FC<StatusChipProps> = ({
         displayLabel = 'Approved';
         resolvedVariant = 'success';
         break;
+      case 'purchased':
+        displayLabel = 'Purchased';
+        resolvedVariant = 'success';
+        break;
       case 'submitted':
+      case 'pending':
         displayLabel = 'Submitted';
         resolvedVariant = 'warn';
         break;
@@ -40,6 +45,10 @@ export const StatusChip: React.FC<StatusChipProps> = ({
         break;
       case 'draft':
         displayLabel = 'Draft';
+        resolvedVariant = 'neutral';
+        break;
+      case 'saved':
+        displayLabel = 'Saved';
         resolvedVariant = 'neutral';
         break;
       default:

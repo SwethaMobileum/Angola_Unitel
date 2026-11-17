@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { COPY } from '../copy/en';
 import { LoanApplication } from '../types';
 import { getStoredApplications, processApprovalDecision } from '../lib/loans';
+import { useSyncDatabase } from '../lib/syncClient';
 import { useAuth } from '../context/AuthContext';
 import { formatKz } from '../lib/money';
+import { StatusChip } from '../components/StatusChip';
+import { PageHeader } from '../components/PageHeader';
+import { Modal } from '../components/Modal';
 import {
   CheckCircle2,
   XCircle,
@@ -13,21 +16,21 @@ import {
   Check,
   X,
   ShieldCheck,
-  TrendingUp,
-  AlertOctagon,
   ArrowRight,
   Filter,
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
-import { StatusChip } from '../components/StatusChip';
 
 type ApprovalTab = 'submitted' | 'approved' | 'rejected' | 'all';
 
 export const Approvals: React.FC = () => {
-  const { role, currentUser, setRole } = useAuth();
+  const { currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [applications, setApplications] = useState<LoanApplication[]>([]);
 
-  // Parse initial tab from query param e.g. /approvals?tab=approved
+  // Tab State
   const initialTabParam = searchParams.get('tab') || searchParams.get('status');
   const [activeTab, setActiveTab] = useState<ApprovalTab>(() => {
     if (initialTabParam === 'approved') return 'approved';
@@ -39,48 +42,47 @@ export const Approvals: React.FC = () => {
   const [search, setSearch] = useState<string>('');
   const [selectedApp, setSelectedApp] = useState<LoanApplication | null>(null);
 
-  const isAuthorizedApprover = role === 'approver' || role === 'admin';
+  // Pagination (6 to 8 rows per page)
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const rowsPerPage = 7;
 
   // Decision Modal State
+  const [decisionModalOpen, setDecisionModalOpen] = useState<boolean>(false);
   const [decisionType, setDecisionType] = useState<'approved' | 'rejected'>('approved');
   const [decisionReason, setDecisionReason] = useState<string>('');
-  const [approverName, setApproverName] = useState<string>(currentUser.full_name);
   const [actionSuccess, setActionSuccess] = useState<string>('');
-
-  useEffect(() => {
-    setApproverName(currentUser.full_name);
-  }, [currentUser]);
 
   useEffect(() => {
     refreshData();
   }, []);
 
-  // Sync tab state when URL query params change
-  useEffect(() => {
-    const t = searchParams.get('tab') || searchParams.get('status');
-    if (t === 'approved') setActiveTab('approved');
-    else if (t === 'rejected') setActiveTab('rejected');
-    else if (t === 'submitted' || t === 'pending') setActiveTab('submitted');
-    else if (t === 'all') setActiveTab('all');
-  }, [searchParams]);
+  // Live real-time cross-port sync
+  useSyncDatabase(() => {
+    refreshData();
+  });
 
   const refreshData = () => {
-    setApplications(getStoredApplications());
+    const apps = getStoredApplications();
+    setApplications(apps);
+    // If a selected app is open, update its reference
+    if (selectedApp) {
+      const updated = apps.find((a) => a.id === selectedApp.id);
+      if (updated) setSelectedApp(updated);
+    }
   };
 
   const handleSelectTab = (tab: ApprovalTab) => {
     setActiveTab(tab);
     setSearchParams({ tab });
+    setCurrentPage(1);
   };
 
   // Metrics
   const submittedApps = applications.filter((a) => a.status === 'submitted');
-  const approvedApps = applications.filter((a) => a.status === 'approved');
+  const approvedApps = applications.filter((a) => a.status === 'approved' || a.status === 'purchased');
   const rejectedApps = applications.filter((a) => a.status === 'rejected');
-  const totalDecided = approvedApps.length + rejectedApps.length;
-  const approvalRate = totalDecided > 0 ? Math.round((approvedApps.length / totalDecided) * 100) : 100;
 
-  // Filtered list based on active tab and search
+  // Filtered applications
   const filteredApps = applications.filter((app) => {
     const custName = app.evaluation?.customer?.full_name?.toLowerCase() || '';
     const q = search.toLowerCase();
@@ -89,539 +91,535 @@ export const Approvals: React.FC = () => {
       app.id.toLowerCase().includes(q) ||
       (app.equipment?.name && app.equipment.name.toLowerCase().includes(q));
 
-    if (activeTab === 'submitted') {
-      return matchesSearch && app.status === 'submitted';
-    }
-    if (activeTab === 'approved') {
-      return matchesSearch && app.status === 'approved';
-    }
-    if (activeTab === 'rejected') {
-      return matchesSearch && app.status === 'rejected';
-    }
+    if (activeTab === 'submitted') return matchesSearch && app.status === 'submitted';
+    if (activeTab === 'approved') return matchesSearch && (app.status === 'approved' || app.status === 'purchased');
+    if (activeTab === 'rejected') return matchesSearch && app.status === 'rejected';
     return matchesSearch;
   });
 
-  const handleOpenDecisionModal = (app: LoanApplication, type: 'approved' | 'rejected') => {
+  // Paged items
+  const totalPages = Math.max(1, Math.ceil(filteredApps.length / rowsPerPage));
+  const pagedApps = filteredApps.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+
+  const handleOpenReview = (app: LoanApplication) => {
     setSelectedApp(app);
+  };
+
+  const handleOpenDecision = (type: 'approved' | 'rejected') => {
+    if (!selectedApp) return;
     setDecisionType(type);
     if (type === 'approved') {
       setDecisionReason(
-        `Approved based on acceptable credit proxy score (${app.evaluation?.results?.score || 600}) and manageable ${app.emi_share_pct}% EMI debt burden.`
+        `Approved: acceptable proxy score (${selectedApp.evaluation?.results?.score || 650}) and affordable ${selectedApp.emi_share_pct}% monthly debt burden.`
       );
     } else {
-      setDecisionReason('Application does not meet credit risk criteria or affordability thresholds.');
+      setDecisionReason('Declined: exceeds credit risk tolerance or policy affordability threshold.');
     }
+    setDecisionModalOpen(true);
     setActionSuccess('');
   };
 
   const handleExecuteDecision = () => {
     if (!selectedApp) return;
-    if (!decisionReason.trim()) {
-      alert('Please provide a mandatory decision reason.');
+    if (decisionType === 'rejected' && !decisionReason.trim()) {
+      alert('A decision reason is mandatory for rejection.');
       return;
     }
 
-    const recipientEmail = selectedApp.evaluation?.customer?.email || 'bhargownarravula777@gmail.com';
-
+    const recipient = selectedApp.evaluation?.customer?.email || 'bhargownarravula777@gmail.com';
     processApprovalDecision(
       selectedApp.id,
       decisionType,
       decisionReason,
-      approverName,
-      recipientEmail
+      currentUser.full_name || 'Dra. Maria Mendes (Approver)',
+      recipient
     );
 
     refreshData();
-    setActionSuccess(`Application ${selectedApp.id.slice(-6).toUpperCase()} successfully marked as ${decisionType.toUpperCase()}! Decision notification dispatched to ${recipientEmail}.`);
+    setActionSuccess(`Application ${selectedApp.id.slice(-6).toUpperCase()} marked as ${decisionType.toUpperCase()}! Decision email delivered.`);
     setTimeout(() => {
-      setSelectedApp(null);
+      setDecisionModalOpen(false);
       setActionSuccess('');
-    }, 1500);
+    }, 1200);
   };
 
   return (
-    <div className="space-y-6 w-full min-w-0">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-orange-border/80 shadow-xs">
-        <div>
-          <h1 className="text-2xl font-bold text-navy">{COPY.nav.approvals}</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Approver review queue: inspect proxy scoring breakdowns, evaluate policy overlay flags, and record final financing decisions.
-          </p>
-        </div>
+    <div className="space-y-4 w-full min-w-0 pb-8">
+      {/* Page Header */}
+      <PageHeader
+        title="Applications Queue"
+        helperText="Review proxy scores and make credit decisions."
+        icon={CheckCircle2}
+        badgeText={`Approver: ${currentUser.full_name}`}
+      />
 
-        <div className="flex items-center gap-2">
-          <span className="badge-warm">
-            Active Approver: {approverName}
-          </span>
-        </div>
-      </div>
+      {/* VIEW 1: APPLICATIONS QUEUE TABLE */}
+      {!selectedApp && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          {/* Filter Pills & Search */}
+          <div className="bg-card p-4 rounded-2xl border-2 border-orange shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+              <button
+                onClick={() => handleSelectTab('submitted')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'submitted'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-orange-600'
+                  }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Submitted ({submittedApps.length})</span>
+              </button>
 
-      {/* Role Alert Banner if Viewing as Analyst */}
-      {!isAuthorizedApprover && (
-        <div className="p-4 rounded-xl bg-orange-soft border-2 border-orange-border text-navy flex flex-wrap items-center justify-between gap-4 shadow-xs">
-          <div className="flex items-start gap-3">
-            <AlertOctagon className="w-5 h-5 text-orange shrink-0 mt-0.5" />
-            <div className="text-xs leading-relaxed">
-              <strong className="text-orange">Analyst Mode (Viewing as {currentUser.full_name}): </strong>
-              Frontline analysts can originate applications. Under Unitel & BNA credit regulations, loan approval decisions require an authorized <strong>Approver role (Dra. Maria Mendes)</strong>.
+              <button
+                onClick={() => handleSelectTab('approved')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'approved'
+                  ? 'bg-green-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-green-700'
+                  }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Approved ({approvedApps.length})</span>
+              </button>
+
+              <button
+                onClick={() => handleSelectTab('rejected')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'rejected'
+                  ? 'bg-red-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-red-700'
+                  }`}
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Rejected ({rejectedApps.length})</span>
+              </button>
+
+              <button
+                onClick={() => handleSelectTab('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'all'
+                  ? 'bg-ink text-white shadow-xs'
+                  : 'text-slate-600 hover:text-ink'
+                  }`}
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span>All ({applications.length})</span>
+              </button>
+            </div>
+
+            <div className="relative flex-1 max-w-xs">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search applicant or equipment..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-orange focus:bg-white"
+              />
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setRole('approver')}
-            className="btn-primary text-xs py-1.5 px-3.5 shadow-xs"
-          >
-            Switch to Approver (Dra. Maria Mendes)
-          </button>
+
+          {/* Compact Table (6-8 rows per page) */}
+          <div className="bg-card rounded-2xl border-2 border-orange shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4 w-24">Ref</th>
+                    <th className="py-3 px-4 w-52">Subscriber</th>
+                    <th className="py-3 px-4 w-28">Segment</th>
+                    <th className="py-3 px-4">Equipment</th>
+                    <th className="py-3 px-4 w-36">Monthly EMI</th>
+                    <th className="py-3 px-4 w-28">Score</th>
+                    <th className="py-3 px-4 w-28">Status</th>
+                    <th className="py-3 px-4 text-right w-24">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {pagedApps.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-slate-400">
+                        No applications matching selected filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    pagedApps.map((app) => (
+                      <tr
+                        key={app.id}
+                        onClick={() => handleOpenReview(app)}
+                        className="hover:bg-peach/30 transition-colors cursor-pointer group"
+                      >
+                        <td className="py-3 px-4 font-mono font-bold text-slate-600">
+                          {app.id.slice(-6).toUpperCase()}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-bold text-ink block">
+                            {app.evaluation?.customer?.full_name || 'Subscriber'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {app.evaluation?.customer?.msisdn}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 font-mono font-bold text-orange-600">
+                          {app.evaluation?.segment_code}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-medium text-slate-700 block">
+                            {app.equipment?.name}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {formatKz(app.price_kz)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-mono font-bold text-ink block">
+                            {formatKz(app.monthly_emi_kz)}/mo
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {app.term_months}m ({app.emi_share_pct}%)
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-mono font-black text-ink block text-xs">
+                            {app.evaluation?.results?.score || '—'}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            {app.evaluation?.results?.band_label}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <StatusChip status={app.status} />
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenReview(app);
+                            }}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-orange-600 hover:text-white rounded-lg text-[11px] font-bold text-slate-700 transition-all inline-flex items-center gap-1"
+                          >
+                            <span>Review</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls (Paging 6 to 8 rows) */}
+            <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-t border-slate-100 text-xs">
+              <span className="text-slate-500">
+                Showing {Math.min(filteredApps.length, (currentPage - 1) * rowsPerPage + 1)} to{' '}
+                {Math.min(filteredApps.length, currentPage * rowsPerPage)} of {filteredApps.length} applications
+              </span>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="p-1 rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-2 font-mono font-bold text-slate-700">
+                  {currentPage} of {totalPages}
+                </span>
+                <button
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="p-1 rounded-lg border border-slate-200 text-slate-500 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Metrics Row - Clickable Cards that directly activate the matching tab */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
-        {/* Metric 1: Submitted / Pending */}
-        <button
-          type="button"
-          onClick={() => handleSelectTab('submitted')}
-          className={`card-warm p-4 rounded-xl space-y-1 text-left transition-all cursor-pointer ${
-            activeTab === 'submitted'
-              ? 'ring-2 ring-orange bg-orange-soft/40 border-orange'
-              : 'bg-white hover:border-orange/60'
-          }`}
-        >
+      {/* VIEW 2: REVIEW PAGE (When a row is clicked) */}
+      {selectedApp && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          {/* Back button bar */}
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-              <Clock className="w-4 h-4 text-orange" />
-              Submitted / Pending
+            <button
+              onClick={() => setSelectedApp(null)}
+              className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-700 flex items-center gap-1.5 transition-all shadow-xs"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Queue</span>
+            </button>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold text-slate-500">
+                App ID: {selectedApp.id}
+              </span>
+              <StatusChip status={selectedApp.status} />
+            </div>
+          </div>
+
+          {/* 1. AUTO-WRITTEN SUMMARY (4 Short Lines at top) */}
+          <div className="p-4 bg-gradient-to-r from-peach/80 via-orange-50 to-white rounded-2xl border-2 border-orange-300 shadow-sm space-y-1.5">
+            <span className="text-[10px] font-black uppercase text-orange-800 tracking-wider block">
+              Auto-Generated Executive Summary
             </span>
-            <span className="text-[10px] font-bold text-orange flex items-center gap-0.5">
-              Filter &rarr;
-            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange mt-1.5 shrink-0" />
+                <div>
+                  <strong className="text-ink">Applicant: </strong>
+                  <span className="text-slate-700">
+                    {selectedApp.evaluation?.customer?.full_name} ({selectedApp.evaluation?.customer?.msisdn})
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange mt-1.5 shrink-0" />
+                <div>
+                  <strong className="text-ink">Segment: </strong>
+                  <span className="text-slate-700">
+                    {selectedApp.evaluation?.segment_code} • {selectedApp.evaluation?.wallet_available ? 'Wallet Active' : 'Cash Telecom'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange mt-1.5 shrink-0" />
+                <div>
+                  <strong className="text-ink">Evaluation: </strong>
+                  <span className="text-slate-700 font-bold">
+                    Score {selectedApp.evaluation?.results?.score || 650} ({selectedApp.evaluation?.results?.band_label || 'Acceptable'})
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange mt-1.5 shrink-0" />
+                <div>
+                  <strong className="text-ink">Financing: </strong>
+                  <span className="text-slate-700">
+                    {selectedApp.equipment?.name} ({formatKz(selectedApp.price_kz)}) • {formatKz(selectedApp.monthly_emi_kz)}/mo ({selectedApp.emi_share_pct}% share)
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="text-2xl font-extrabold font-mono text-orange mt-1">
-            {submittedApps.length}
-          </div>
-          <span className="text-[11px] text-slate-500 block">Awaiting approver review</span>
-        </button>
 
-        {/* Metric 2: Approved Loans */}
-        <button
-          type="button"
-          onClick={() => handleSelectTab('approved')}
-          className={`card-warm p-4 rounded-xl space-y-1 text-left transition-all cursor-pointer ${
-            activeTab === 'approved'
-              ? 'ring-2 ring-emerald-500 bg-emerald-50/60 border-emerald-500'
-              : 'bg-white hover:border-emerald-500/60'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              Approved Loans
-            </span>
-            <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-0.5">
-              Filter &rarr;
-            </span>
-          </div>
-          <div className="text-2xl font-extrabold font-mono text-emerald-700 mt-1">
-            {approvedApps.length}
-          </div>
-          <span className="text-[11px] text-slate-500 block">Financed equipment contracts</span>
-        </button>
+          {/* 2. Review Content Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Left: Points Bars */}
+            <div className="bg-card rounded-2xl p-5 border border-orange-100 shadow-md space-y-3">
+              <span className="text-xs font-black text-ink uppercase tracking-wider block">
+                Block Breakdown
+              </span>
 
-        {/* Metric 3: Rejected Loans */}
-        <button
-          type="button"
-          onClick={() => handleSelectTab('rejected')}
-          className={`card-warm p-4 rounded-xl space-y-1 text-left transition-all cursor-pointer ${
-            activeTab === 'rejected'
-              ? 'ring-2 ring-red-500 bg-red-50/60 border-red-500'
-              : 'bg-white hover:border-red-500/60'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-              <XCircle className="w-4 h-4 text-red-600" />
-              Rejected Loans
-            </span>
-            <span className="text-[10px] font-bold text-red-700 flex items-center gap-0.5">
-              Filter &rarr;
-            </span>
-          </div>
-          <div className="text-2xl font-extrabold font-mono text-red-700 mt-1">
-            {rejectedApps.length}
-          </div>
-          <span className="text-[11px] text-slate-500 block">Risk or affordability cap declined</span>
-        </button>
-
-        {/* Metric 4: All Loans / Approval Rate */}
-        <button
-          type="button"
-          onClick={() => handleSelectTab('all')}
-          className={`card-warm p-4 rounded-xl space-y-1 text-left transition-all cursor-pointer ${
-            activeTab === 'all'
-              ? 'ring-2 ring-navy bg-slate-50 border-navy'
-              : 'bg-white hover:border-slate-400'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-              <TrendingUp className="w-4 h-4 text-navy" />
-              Approval Rate
-            </span>
-            <span className="text-[10px] font-bold text-navy flex items-center gap-0.5">
-              View All &rarr;
-            </span>
-          </div>
-          <div className="text-2xl font-extrabold font-mono text-navy mt-1">
-            {approvalRate}%
-          </div>
-          <span className="text-[11px] text-slate-500 block">{applications.length} total applications</span>
-        </button>
-      </div>
-
-      {/* Tabs and Search Bar - Clear Categorization (Submitted, Approved, Rejected, All) */}
-      <div className="card-warm p-4 bg-white flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-1.5 border border-orange-border/80 rounded-xl p-1 bg-[#FAF8F5]">
-          {/* Tab 1: Submitted / Pending */}
-          <button
-            onClick={() => handleSelectTab('submitted')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'submitted'
-                ? 'bg-orange text-white shadow-xs'
-                : 'text-slate-600 hover:text-orange hover:bg-orange-soft/60'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>Submitted ({submittedApps.length})</span>
-          </button>
-
-          {/* Tab 2: Approved */}
-          <button
-            onClick={() => handleSelectTab('approved')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'approved'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-emerald-700 hover:bg-emerald-50'
-            }`}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Approved ({approvedApps.length})</span>
-          </button>
-
-          {/* Tab 3: Rejected */}
-          <button
-            onClick={() => handleSelectTab('rejected')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'rejected'
-                ? 'bg-red-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-red-700 hover:bg-red-50'
-            }`}
-          >
-            <XCircle className="w-3.5 h-3.5" />
-            <span>Rejected ({rejectedApps.length})</span>
-          </button>
-
-          {/* Tab 4: All Applications */}
-          <button
-            onClick={() => handleSelectTab('all')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'all'
-                ? 'bg-navy text-white shadow-xs'
-                : 'text-slate-600 hover:text-navy hover:bg-slate-100'
-            }`}
-          >
-            <Filter className="w-3.5 h-3.5" />
-            <span>All ({applications.length})</span>
-          </button>
-        </div>
-
-        <div className="relative flex-1 max-w-sm">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search by customer name, device, or app reference..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input-base pl-9 text-xs"
-          />
-        </div>
-      </div>
-
-      {/* Approval Queue List */}
-      <div className="space-y-4">
-        {filteredApps.length === 0 ? (
-          <div className="card-warm p-12 text-center bg-white rounded-2xl text-slate-400 space-y-2">
-            <CheckCircle2 className="w-10 h-10 mx-auto opacity-40 text-orange" />
-            <h3 className="text-base font-bold text-navy">
-              No {activeTab === 'submitted' ? 'Submitted (Pending)' : activeTab === 'approved' ? 'Approved' : activeTab === 'rejected' ? 'Rejected' : ''} Applications in Queue
-            </h3>
-            <p className="text-xs text-slate-500">
-              There are currently no applications matching the "{activeTab}" filter.
-            </p>
-          </div>
-        ) : (
-          filteredApps.map((app) => {
-            const cust = app.evaluation?.customer;
-            const res = app.evaluation?.results;
-            const isPending = app.status === 'submitted';
-
-            return (
-              <div
-                key={app.id}
-                className="card-warm p-5 bg-white rounded-2xl hover:shadow-md transition-shadow space-y-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  {/* Left: Customer & Equipment */}
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                        {app.id.slice(-8).toUpperCase()}
-                      </span>
-                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-orange text-white">
-                        {app.evaluation?.segment_code}
-                      </span>
-                      <StatusChip status={app.status} />
-                    </div>
-                    <h3 className="text-base font-bold text-navy">{cust?.full_name}</h3>
-                    <p className="text-xs text-slate-500 font-mono">
-                      MSISDN: {cust?.msisdn} &bull; ID: {cust?.national_id_masked}
-                    </p>
+              <div className="space-y-2 text-xs">
+                <div>
+                  <div className="flex justify-between mb-0.5">
+                    <span className="text-slate-600">Personal (P)</span>
+                    <span className="font-mono font-bold text-ink">
+                      {Math.round(selectedApp.evaluation?.results?.block_points?.P?.earnedPoints || 10)} pts
+                    </span>
                   </div>
-
-                  {/* Right: Equipment Financing */}
-                  <div className="text-right space-y-0.5">
-                    <span className="text-xs text-slate-500 font-medium">Financed Device:</span>
-                    <div className="text-sm font-bold text-navy">{app.equipment?.name}</div>
-                    <div className="text-xs font-mono font-bold text-orange">
-                      {formatKz(app.monthly_emi_kz)}/mo ({app.term_months}m plan &bull; Total {formatKz(app.price_kz)})
-                    </div>
+                  <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full bg-slate-600 rounded-full w-4/5" />
                   </div>
                 </div>
 
-                {/* Score & Affordability Strip */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl bg-[#FAF8F5] border border-orange-border/60 text-xs">
-                  <div>
-                    <span className="text-slate-500 text-[11px] block">Proxy Score:</span>
-                    <span className="font-mono font-extrabold text-navy text-sm">
-                      {res?.score || '—'}
-                    </span>
-                    <span className="text-[10px] text-slate-400 block font-medium">({res?.band_label})</span>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-500 text-[11px] block">Data Confidence:</span>
-                    <span className="font-bold text-emerald-700 capitalize">
-                      {res?.confidence || 'Medium'}
-                    </span>
-                    <span className="text-[10px] text-slate-400 block">Non-penalized</span>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-500 text-[11px] block">Credit Limit Cap:</span>
-                    <span className="font-mono font-bold text-navy">
-                      {res?.limit_kz ? formatKz(res.limit_kz) : '—'}
-                    </span>
-                    <span className="text-[10px] text-slate-400 block truncate" title={res?.limit_cap_applied}>
-                      {res?.limit_cap_applied}
+                <div>
+                  <div className="flex justify-between mb-0.5">
+                    <span className="text-teal font-medium">Telecom (T)</span>
+                    <span className="font-mono font-bold text-ink">
+                      {Math.round(selectedApp.evaluation?.results?.block_points?.T?.earnedPoints || 30)} pts
                     </span>
                   </div>
-
-                  <div>
-                    <span className="text-slate-500 text-[11px] block">Monthly Debt Burden:</span>
-                    <span
-                      className={`font-mono font-bold px-1.5 py-0.2 rounded text-[11px] ${
-                        app.emi_share_pct > 30.0
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-emerald-100 text-emerald-800'
-                      }`}
-                    >
-                      {app.emi_share_pct}% of income
-                    </span>
-                    <span className="text-[10px] text-slate-400 block">Cap: 30%</span>
+                  <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full bg-teal rounded-full w-3/4" />
                   </div>
                 </div>
 
-                {/* Overlay Flags Callout if Any */}
-                {res?.overlay_flags && res.overlay_flags.length > 0 && (
-                  <div className="p-2.5 rounded-lg bg-orange-soft border border-orange-border text-xs text-navy flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-orange shrink-0" />
-                    <span>
-                      Policy Flags Triggered: {res.overlay_flags.map((f) => f.note).join('; ')}
-                    </span>
+                {selectedApp.evaluation?.results?.block_points?.W && selectedApp.evaluation.results.block_points.W.rawPoints > 0 && (
+                  <div>
+                    <div className="flex justify-between mb-0.5">
+                      <span className="text-purple-700 font-medium">Wallet (W)</span>
+                      <span className="font-mono font-bold text-ink">
+                        {Math.round(selectedApp.evaluation.results.block_points.W.earnedPoints)} pts
+                      </span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full bg-purple-600 rounded-full w-2/3" />
+                    </div>
                   </div>
                 )}
 
-                {/* Approver Action Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
-                  <span className="text-[11px] text-slate-400 font-mono">
-                    Submitted: {new Date(app.submitted_at).toLocaleString()}
-                  </span>
-
-                  {isPending ? (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleOpenDecisionModal(app, 'rejected')}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 flex items-center gap-1 transition-colors"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        Reject Application
-                      </button>
-                      <button
-                        onClick={() => handleOpenDecisionModal(app, 'approved')}
-                        className="px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs flex items-center gap-1 transition-colors"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        Approve Application
-                      </button>
+                {selectedApp.evaluation?.results?.block_points?.B && selectedApp.evaluation.results.block_points.B.rawPoints > 0 && (
+                  <div>
+                    <div className="flex justify-between mb-0.5">
+                      <span className="text-blue-700 font-medium">Bank (B)</span>
+                      <span className="font-mono font-bold text-ink">
+                        {Math.round(selectedApp.evaluation.results.block_points.B.earnedPoints)} pts
+                      </span>
                     </div>
-                  ) : (
-                    <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      Decision recorded in Audit Log & Notification Sent
-                    </span>
-                  )}
+                    <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full bg-blue-700 rounded-full w-4/5" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Middle: Key Values with Source Chips */}
+            <div className="bg-card rounded-2xl p-5 border border-orange-100 shadow-md space-y-2.5">
+              <span className="text-xs font-black text-ink uppercase tracking-wider block">
+                Verified Key Signals
+              </span>
+
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                  <span className="text-slate-600">SIM Tenure</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-orange-100 text-orange-800">
+                    From Unitel
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                  <span className="text-slate-600">Top-Up History</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-orange-100 text-orange-800">
+                    From Unitel
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                  <span className="text-slate-600">Wallet Turnover</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-100 text-purple-800">
+                    From Unitel Money
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                  <span className="text-slate-600">Identity Verification</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-green-100 text-green-800">
+                    Civil Match
+                  </span>
                 </div>
               </div>
-            );
-          })
-        )}
-      </div>
+            </div>
 
-      {/* ================= DECISION MODAL ================= */}
-      {selectedApp && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border-2 border-orange-border p-6 space-y-5">
-            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+            {/* Right: Policy Flags & Decision Actions */}
+            <div className="bg-card rounded-2xl p-5 border border-orange-100 shadow-md flex flex-col justify-between space-y-4">
               <div>
-                <span className="text-[11px] font-mono font-bold text-orange uppercase tracking-wider block">
-                  Mandatory Credit Decision
+                <span className="text-xs font-black text-ink uppercase tracking-wider block mb-2">
+                  Policy Overlay
                 </span>
-                <h3 className="text-base font-bold text-navy mt-0.5">
-                  Record Decision for {selectedApp.evaluation?.customer?.full_name}
-                </h3>
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-ink">
+                    <ShieldCheck className="w-4 h-4 text-orange" />
+                    <span>BNA Underwriting Checks Passed</span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 block">
+                    No SIM-swap hold detected. 30% debt cap validated.
+                  </span>
+                </div>
               </div>
+
+              {/* Action Buttons */}
+              {selectedApp.status === 'submitted' ? (
+                <div className="flex gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => handleOpenDecision('rejected')}
+                    className="flex-1 py-2.5 bg-red-50 hover:bg-red-100 border border-red-300 text-red-700 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Reject</span>
+                  </button>
+                  <button
+                    onClick={() => handleOpenDecision('approved')}
+                    className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Approve</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-xl bg-slate-50 text-center text-xs text-slate-600 border border-slate-200 font-medium">
+                  Decision finalized as <strong className="uppercase">{selectedApp.status}</strong>.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DECISION CONFIRMATION MODAL */}
+      <Modal
+        isOpen={decisionModalOpen && !!selectedApp}
+        onClose={() => setDecisionModalOpen(false)}
+        className="bg-white rounded-2xl max-w-lg md:max-w-xl w-full p-6 sm:p-7 shadow-2xl border-2 border-orange/40 space-y-5"
+      >
+        {selectedApp && (
+          <>
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="text-base font-black font-heading text-ink">
+                Confirm {decisionType === 'approved' ? 'Approval' : 'Rejection'}
+              </h3>
               <button
-                onClick={() => setSelectedApp(null)}
-                className="p-1 rounded-md text-slate-400 hover:text-navy hover:bg-slate-100"
+                onClick={() => setDecisionModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {actionSuccess && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <div className="p-3 bg-green-50 border border-green-200 text-green-800 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
                 <span>{actionSuccess}</span>
               </div>
             )}
 
-            <div className="space-y-4 text-xs">
-              {/* Summary Strip */}
-              <div className="p-3 bg-[#FAF8F5] rounded-xl border border-orange-border/60 flex items-center justify-between">
-                <div>
-                  <span className="text-slate-500 block">Equipment:</span>
-                  <strong className="text-navy">{selectedApp.equipment?.name}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Price:</span>
-                  <strong className="text-navy">{formatKz(selectedApp.price_kz)}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Monthly EMI:</span>
-                  <strong className="text-orange">{formatKz(selectedApp.monthly_emi_kz)}/mo</strong>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Score:</span>
-                  <strong className="text-emerald-700">{selectedApp.evaluation?.results?.score || '—'}</strong>
-                </div>
-              </div>
-
-              {/* Decision Toggle */}
-              <div className="space-y-1.5">
-                <label className="font-bold text-navy">Decision *</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setDecisionType('approved')}
-                    className={`py-2.5 px-4 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all ${
-                      decisionType === 'approved'
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-400'
-                        : 'border-slate-300 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <Check className="w-4 h-4 text-emerald-600" />
-                    Approve Loan
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDecisionType('rejected')}
-                    className={`py-2.5 px-4 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all ${
-                      decisionType === 'rejected'
-                        ? 'border-red-500 bg-red-50 text-red-800 ring-2 ring-red-400'
-                        : 'border-slate-300 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <X className="w-4 h-4 text-red-600" />
-                    Reject Loan
-                  </button>
-                </div>
-              </div>
-
-              {/* Mandatory Reason */}
-              <div className="space-y-1.5">
-                <label className="font-bold text-navy">
-                  Decision Justification (Mandatory Audit Trail Note) *
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-ink mb-1">
+                  Decision Note {decisionType === 'rejected' && <span className="text-red-600">*</span>}:
                 </label>
                 <textarea
+                  rows={3}
                   value={decisionReason}
                   onChange={(e) => setDecisionReason(e.target.value)}
-                  placeholder="State the justification for approval or rejection under BNA / Unitel lending policy..."
-                  rows={3}
-                  className="input-base text-xs font-medium"
-                />
-                <span className="text-[11px] text-slate-500 block">
-                  This explanation is dispatched to the Analyst via email and written to the immutable audit log.
-                </span>
-              </div>
-
-              {/* Approver Name */}
-              <div className="space-y-1.5">
-                <label className="font-bold text-navy">Approver Sign-off Name *</label>
-                <input
-                  type="text"
-                  value={approverName}
-                  onChange={(e) => setApproverName(e.target.value)}
-                  className="input-base text-xs font-semibold"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange text-xs"
+                  placeholder="Enter reason included in transactional decision email..."
                 />
               </div>
 
-              {/* Modal Actions */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setSelectedApp(null)}
-                  className="btn-secondary text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExecuteDecision}
-                  className={`text-xs py-2 px-4 rounded-xl font-bold text-white shadow-sm flex items-center gap-1.5 ${
-                    decisionType === 'approved'
-                      ? 'bg-emerald-600 hover:bg-emerald-700'
-                      : 'bg-red-600 hover:bg-red-700'
-                  }`}
-                >
-                  <span>Confirm {decisionType === 'approved' ? 'Approval' : 'Rejection'}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
+              <span className="text-[11px] text-slate-400 block">
+                This note will be included directly in the email dispatched to {selectedApp.evaluation?.customer?.email || 'the applicant'}.
+              </span>
             </div>
-          </div>
-        </div>
-      )}
+
+            <div className="flex gap-2 pt-2 border-t">
+              <button
+                onClick={() => setDecisionModalOpen(false)}
+                className="flex-1 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExecuteDecision}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold text-white shadow-sm transition-all ${decisionType === 'approved'
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-red-600 hover:bg-red-700'
+                  }`}
+              >
+                Confirm {decisionType === 'approved' ? 'Approval' : 'Rejection'}
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
 };

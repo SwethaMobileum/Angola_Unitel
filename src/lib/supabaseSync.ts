@@ -169,149 +169,163 @@ export async function dispatchTransactionalEmail(params: EmailSendParams): Promi
 
 /**
  * Generate branded Unitel HTML email template for loan application events
+ * Strictly follows Section 10: Orange header bar, white body, one summary table, one button.
+ * Max 6 short lines of text each.
  */
 export function generateLoanEmailHtml(options: {
   kind: 'submission_notice' | 'approval_notice' | 'rejection_notice';
   customerName: string;
   applicationId: string;
-  equipmentName: string;
-  priceKz: number;
+  segment?: string;
+  equipmentName?: string;
+  priceKz?: number;
   monthlyEmiKz?: number;
   termMonths?: number;
   score?: number;
   scoreBand?: string;
+  limitKz?: number;
+  autoSummary?: string;
   reason?: string;
-  actorName: string;
+  actorName?: string;
 }): string {
   const isApproved = options.kind === 'approval_notice';
   const isRejected = options.kind === 'rejection_notice';
   const isSubmission = options.kind === 'submission_notice';
 
-  const statusColor = isApproved ? '#2E7D4F' : isRejected ? '#B3261E' : '#E8772E';
-  const statusTitle = isApproved
-    ? 'LOAN APPLICATION APPROVED'
-    : isRejected
-    ? 'LOAN APPLICATION DECLINED'
-    : 'NEW APPLICATION AWAITING APPROVAL';
+  const refCode = `CR-${options.applicationId.slice(-6).toUpperCase()}`;
+
+  // Subject line and title per Section 10
+  const title = isSubmission
+    ? `New loan application: ${options.customerName}`
+    : isApproved
+    ? 'Your application is approved'
+    : 'Application update';
+
+  const buttonText = isSubmission
+    ? 'Review Application'
+    : isApproved
+    ? 'Proceed to buy'
+    : 'View Details';
+
+  const buttonBg = isSubmission ? '#D14F00' : isApproved ? '#22A06B' : '#1F2430';
+
+  const summaryLines = options.autoSummary
+    ? options.autoSummary.split('\n').filter(Boolean)
+    : [
+        `${options.customerName} applied for equipment financing (${options.segment || 'S3'}).`,
+        `Assessed proxy score: ${options.score || 680}/900 (${options.scoreBand || 'Acceptable'}).`,
+        `Device selected: ${options.equipmentName || 'Smartphone 4G'} for ${(options.priceKz || 65000).toLocaleString()} Kz.`,
+        `Payment plan: ${options.termMonths || 6} months at ${(options.monthlyEmiKz || 10833).toLocaleString()} Kz/mo.`,
+      ];
 
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Unitel Credit Notification</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #FAF8F5; margin: 0; padding: 24px;">
+<body style="margin: 0; padding: 20px; background-color: #FFF7EC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1F2430;">
   <table width="100%" border="0" cellspacing="0" cellpadding="0">
     <tr>
       <td align="center">
-        <table width="600" border="0" cellspacing="0" cellpadding="0" style="background-color: #FFFFFF; border-radius: 12px; border: 1px solid #FED7AA; overflow: hidden; box-shadow: 0 4px 12px rgba(232, 119, 46, 0.08);">
-          <!-- Header -->
+        <table width="560" border="0" cellspacing="0" cellpadding="0" style="background-color: #FFFFFF; border-radius: 16px; border: 1px solid #FFE8D1; overflow: hidden; box-shadow: 0 6px 20px rgba(242,107,29,0.10);">
+          
+          <!-- Header Bar (Unitel Orange to Yellow Gradient Accent) -->
           <tr>
-            <td style="background-color: #1F3A5F; padding: 24px 32px; border-bottom: 4px solid #E8772E;">
+            <td style="background-color: #F26B1D; background: linear-gradient(135deg, #F26B1D 0%, #FFB703 100%); padding: 20px 28px;">
               <table width="100%" border="0" cellspacing="0" cellpadding="0">
                 <tr>
                   <td>
-                    <span style="display: inline-block; background-color: #E8772E; color: #FFFFFF; font-weight: bold; font-size: 14px; padding: 4px 8px; border-radius: 4px; margin-right: 8px;">UNITEL</span>
-                    <span style="color: #FFFFFF; font-size: 18px; font-weight: bold; letter-spacing: 0.5px;">Angola Telecom Credit Platform</span>
+                    <span style="display: inline-block; background-color: #FFFFFF; color: #D14F00; font-weight: 900; font-size: 13px; padding: 3px 8px; border-radius: 6px; margin-right: 8px;">AO</span>
+                    <strong style="color: #FFFFFF; font-size: 16px; letter-spacing: 0.5px;">UNITEL TELECOM</strong>
                   </td>
                   <td align="right">
-                    <span style="background-color: rgba(255,255,255,0.15); color: #FDF0E6; font-size: 11px; padding: 4px 10px; border-radius: 12px; font-family: monospace;">CR-${options.applicationId.slice(-6).toUpperCase()}</span>
+                    <span style="background-color: rgba(0,0,0,0.15); color: #FFFFFF; font-size: 11px; padding: 3px 8px; border-radius: 10px; font-family: monospace; font-weight: bold;">${refCode}</span>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
 
-          <!-- Status Banner -->
+          <!-- Title & Context (Few words) -->
           <tr>
-            <td style="background-color: ${statusColor}15; padding: 18px 32px; border-bottom: 1px solid ${statusColor}30;">
-              <div style="color: ${statusColor}; font-size: 12px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;">
-                ${statusTitle}
-              </div>
-              <div style="color: #0F172A; font-size: 16px; font-weight: bold; margin-top: 4px;">
-                Applicant: ${options.customerName}
-              </div>
+            <td style="padding: 24px 28px 12px 28px;">
+              <h1 style="margin: 0 0 6px 0; font-size: 18px; font-weight: 800; color: #1F2430;">${title}</h1>
+              <p style="margin: 0; font-size: 12px; color: #64748B;">Unitel Credit & Device Financing Portal</p>
             </td>
           </tr>
 
-          <!-- Body Content -->
+          <!-- Body Content (Max 6 short lines) -->
           <tr>
-            <td style="padding: 28px 32px;">
-              <p style="color: #334155; font-size: 14px; line-height: 1.6; margin-top: 0;">
-                ${
-                  isSubmission
-                    ? `A new equipment financing request has been submitted by <strong>${options.actorName}</strong> and is currently in the Approver queue awaiting risk adjudication.`
-                    : isApproved
-                    ? `Good news! The credit application has been reviewed and officially <strong>approved</strong> by <strong>${options.actorName}</strong>.`
-                    : `The credit application has been reviewed and <strong>declined</strong> by <strong>${options.actorName}</strong>.`
-                }
-              </p>
-
-              <!-- Financing Summary Box -->
-              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #FFFBF7; border: 1px solid #FED7AA; border-radius: 8px; margin: 20px 0;">
-                <tr>
-                  <td style="padding: 16px 20px;">
-                    <table width="100%" border="0" cellspacing="6" cellpadding="0" style="font-size: 13px;">
-                      <tr>
-                        <td style="color: #64748B; width: 40%;">Equipment Model:</td>
-                        <td style="color: #0F172A; font-weight: bold;">${options.equipmentName}</td>
-                      </tr>
-                      <tr>
-                        <td style="color: #64748B;">Device Retail Price:</td>
-                        <td style="color: #0F172A; font-weight: bold; font-family: monospace;">${options.priceKz.toLocaleString()} Kz</td>
-                      </tr>
-                      ${
-                        options.termMonths
-                          ? `<tr>
-                        <td style="color: #64748B;">Financing Tenure:</td>
-                        <td style="color: #0F172A; font-weight: bold;">${options.termMonths} Months</td>
-                      </tr>`
-                          : ''
-                      }
-                      ${
-                        options.monthlyEmiKz
-                          ? `<tr>
-                        <td style="color: #64748B;">Monthly Installment (EMI):</td>
-                        <td style="color: #E8772E; font-weight: bold; font-size: 15px; font-family: monospace;">${options.monthlyEmiKz.toLocaleString()} Kz / mo</td>
-                      </tr>`
-                          : ''
-                      }
-                      ${
-                        options.score
-                          ? `<tr>
-                        <td style="color: #64748B;">Unitel Proxy Score:</td>
-                        <td style="color: #1F3A5F; font-weight: bold;">${options.score} / 900 (${options.scoreBand || 'Acceptable'})</td>
-                      </tr>`
-                          : ''
-                      }
-                    </table>
-                  </td>
-                </tr>
-              </table>
-
+            <td style="padding: 4px 28px 20px 28px;">
               ${
-                options.reason
-                  ? `<div style="background-color: #F8FAFC; border-left: 4px solid #1F3A5F; padding: 12px 16px; border-radius: 4px; font-size: 13px; color: #334155; margin-bottom: 20px;">
-                <strong style="color: #0F172A;">Decision Rationale:</strong> ${options.reason}
-              </div>`
-                  : ''
+                isApproved
+                  ? `
+                  <div style="background-color: #FFF7EC; border: 1px solid #FFE8D1; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px;">
+                    <div style="font-size: 11px; font-weight: 800; color: #22A06B; text-transform: uppercase; margin-bottom: 6px;">Evaluation Summary</div>
+                    ${summaryLines
+                      .slice(0, 4)
+                      .map((l) => `<div style="font-size: 12px; color: #1F2430; margin-bottom: 3px;">&bull; ${l}</div>`)
+                      .join('')}
+                  </div>
+                  `
+                  : isRejected
+                  ? `
+                  <div style="background-color: #FEF2F2; border: 1px solid #FCA5A5; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px;">
+                    <div style="font-size: 11px; font-weight: 800; color: #C8372D; text-transform: uppercase; margin-bottom: 4px;">Application Notice</div>
+                    <div style="font-size: 13px; font-weight: bold; color: #1F2430; margin-bottom: 4px;">Reason: ${options.reason || 'Insufficient telecom stability record'}</div>
+                    <div style="font-size: 12px; color: #64748B;">Next step: You can re-apply after 90 days or visit a Unitel branch.</div>
+                  </div>
+                  `
+                  : `
+                  <p style="margin: 0 0 14px 0; font-size: 13px; color: #334155;">
+                    A new application is ready in the queue for <strong>${options.customerName}</strong>.
+                  </p>
+                  `
               }
 
-              <p style="color: #64748B; font-size: 12px; line-height: 1.5; margin-bottom: 0;">
-                This is an automated notification from the Unitel Telecom Credit Scoring & Device Financing engine. All loan decisions are logged in an immutable audit ledger compliant with BNA banking guidelines.
-              </p>
+              <!-- Clean Summary Table -->
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; margin-bottom: 22px; font-size: 12px;">
+                <tr style="background-color: #F8FAFC;">
+                  <td style="padding: 9px 14px; color: #64748B; border-bottom: 1px solid #E2E8F0; width: 45%;">Customer Segment</td>
+                  <td style="padding: 9px 14px; font-weight: bold; color: #1F2430; border-bottom: 1px solid #E2E8F0;">${options.segment || 'S3 Smartphone Wallet'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 9px 14px; color: #64748B; border-bottom: 1px solid #E2E8F0;">Credit Score</td>
+                  <td style="padding: 9px 14px; font-weight: bold; color: #1F2430; border-bottom: 1px solid #E2E8F0;">${options.score || 680} (${options.scoreBand || 'Acceptable'})</td>
+                </tr>
+                <tr style="background-color: #F8FAFC;">
+                  <td style="padding: 9px 14px; color: #64748B; border-bottom: 1px solid #E2E8F0;">Financed Equipment</td>
+                  <td style="padding: 9px 14px; font-weight: bold; color: #1F2430; border-bottom: 1px solid #E2E8F0;">${options.equipmentName || 'Smartphone 4G'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 9px 14px; color: #64748B;">Monthly Installment</td>
+                  <td style="padding: 9px 14px; font-weight: 800; color: #D14F00; font-size: 13px;">${(options.monthlyEmiKz || 10833).toLocaleString()} Kz / mo</td>
+                </tr>
+              </table>
+
+              <!-- Single Orange Primary Action Button -->
+              <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center">
+                    <a href="http://localhost:5173" style="display: inline-block; background-color: ${buttonBg}; color: #FFFFFF; font-weight: 800; font-size: 13px; text-decoration: none; padding: 12px 28px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.12);">
+                      ${buttonText} &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="background-color: #FAF8F5; padding: 16px 32px; border-top: 1px solid #E2E8F0; text-align: center;">
-              <span style="color: #94A3B8; font-size: 11px;">
-                Unitel Angola S.A. • Rua Rainha Ginga, Luanda • Credit & Device Financing Dept
-              </span>
+            <td style="background-color: #FFF7EC; padding: 14px 28px; border-top: 1px solid #FFE8D1; text-align: center; font-size: 10px; color: #94A3B8;">
+              Unitel Angola S.A. &bull; Rua Rainha Ginga, Luanda &bull; Credit Adjudication Engine
             </td>
           </tr>
+
         </table>
       </td>
     </tr>

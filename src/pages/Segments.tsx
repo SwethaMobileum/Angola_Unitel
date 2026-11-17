@@ -126,9 +126,10 @@ export const Segments: React.FC = () => {
 
   const filteredSegments = DEFAULT_SEGMENTS.filter(
     (s) =>
-      s.code.toLowerCase().includes(searchFilter.toLowerCase()) ||
-      s.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
-      s.story.toLowerCase().includes(searchFilter.toLowerCase())
+      (s.is_active ?? true) &&
+      (s.code.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        s.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        s.story.toLowerCase().includes(searchFilter.toLowerCase()))
   );
 
   return (
@@ -171,11 +172,10 @@ export const Segments: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-all ${
-                isActive
-                  ? 'border-orange text-orange bg-orange-soft/40 rounded-t-md'
-                  : 'border-transparent text-slate-muted hover:text-navy hover:bg-slate-100/60 rounded-t-md'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-all ${isActive
+                ? 'border-orange text-orange bg-orange-soft/40 rounded-t-md'
+                : 'border-transparent text-slate-muted hover:text-navy hover:bg-slate-100/60 rounded-t-md'
+                }`}
             >
               <Icon className="w-4 h-4" />
               <span>{tab.label}</span>
@@ -187,7 +187,7 @@ export const Segments: React.FC = () => {
       {/* Tab 1: Flow */}
       {activeTab === 'flow' && (
         <div className="space-y-6">
-          <div className="card-base p-6 border border-slate-border rounded-xl bg-white space-y-6">
+          <div className="card-base p-6 border-2 border-orange rounded-xl bg-white space-y-6">
             <div>
               <h2 className="text-lg font-bold text-navy">The 6-Step Telecom Credit Scoring Flow</h2>
               <p className="text-xs text-slate-muted mt-1">
@@ -205,18 +205,16 @@ export const Segments: React.FC = () => {
                   <button
                     key={fs.step}
                     onClick={() => setActiveFlowStep(fs.step)}
-                    className={`p-3.5 rounded-xl border text-left transition-all relative flex flex-col justify-between h-32 ${
-                      isCurrent
-                        ? 'border-orange bg-orange-soft/30 shadow-sm ring-1 ring-orange'
-                        : 'border-slate-border bg-slate-50/60 hover:bg-white hover:border-slate-300'
-                    }`}
+                    className={`p-3.5 rounded-xl border text-left transition-all relative flex flex-col justify-between h-32 ${isCurrent
+                      ? 'border-orange bg-orange-soft/30 shadow-sm ring-1 ring-orange'
+                      : 'border-slate-border bg-slate-50/60 hover:bg-white hover:border-slate-300'
+                      }`}
                   >
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <span
-                          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold font-mono ${
-                            isCurrent ? 'bg-orange text-white' : 'bg-slate-200 text-slate-700'
-                          }`}
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold font-mono ${isCurrent ? 'bg-orange text-white' : 'bg-slate-200 text-slate-700'
+                            }`}
                         >
                           {fs.step}
                         </span>
@@ -282,7 +280,7 @@ export const Segments: React.FC = () => {
       {/* Tab 2: Find the Segment */}
       {activeTab === 'finder' && (
         <div className="space-y-6">
-          <div className="card-base p-6 border border-slate-border rounded-xl bg-white space-y-4">
+          <div className="card-base p-6 border-2 border-orange rounded-xl bg-white space-y-4">
             <div>
               <h2 className="text-lg font-bold text-navy">Segment Decision Chain (Priority Tree)</h2>
               <p className="text-xs text-slate-muted mt-1">
@@ -301,7 +299,7 @@ export const Segments: React.FC = () => {
       {/* Tab 3: Blocks */}
       {activeTab === 'blocks' && (
         <div className="space-y-6">
-          <div className="card-base p-6 border border-slate-border rounded-xl bg-white space-y-4">
+          <div className="card-base p-6 border-2 border-orange rounded-xl bg-white space-y-4">
             <div>
               <h2 className="text-lg font-bold text-navy">The 6 Parameter Blocks</h2>
               <p className="text-xs text-slate-muted mt-1">
@@ -316,7 +314,7 @@ export const Segments: React.FC = () => {
                 return (
                   <div
                     key={block.code}
-                    className="card-base p-5 border border-slate-border rounded-xl bg-white hover:shadow-md transition-shadow space-y-3"
+                    className="card-base p-5 border-2 border-orange rounded-xl bg-white hover:shadow-md transition-shadow space-y-3"
                   >
                     <div className="flex items-center justify-between">
                       <BlockTag code={block.code} showName={true} className="text-xs py-1" />
@@ -364,7 +362,7 @@ export const Segments: React.FC = () => {
       {/* Tab 4: Matrix */}
       {activeTab === 'matrix' && (
         <div className="space-y-6">
-          <div className="card-base p-6 border border-slate-border rounded-xl bg-white space-y-4">
+          <div className="card-base p-6 border-2 border-orange rounded-xl bg-white space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-lg font-bold text-navy">Segment Weight Matrix (Heatmap)</h2>
@@ -393,7 +391,7 @@ export const Segments: React.FC = () => {
       {activeTab === 'cards' && (
         <div className="space-y-6">
           {/* Search and Filter Bar */}
-          <div className="card-base p-4 border border-slate-border rounded-xl bg-white flex flex-wrap items-center justify-between gap-4">
+          <div className="card-base p-4 border-2 border-orange rounded-xl bg-white flex flex-wrap items-center justify-between gap-4">
             <div className="relative flex-1 min-w-[240px] max-w-md">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -405,7 +403,7 @@ export const Segments: React.FC = () => {
               />
             </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
-              <span>Showing {filteredSegments.length} of 10 segments</span>
+              <span>Showing {filteredSegments.length} active segments</span>
               {searchFilter && (
                 <button
                   onClick={() => setSearchFilter('')}

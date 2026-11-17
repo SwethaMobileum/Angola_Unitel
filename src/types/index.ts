@@ -1,4 +1,4 @@
-export type AppRole = 'analyst' | 'approver' | 'admin';
+export type AppRole = 'applicant' | 'approver' | 'admin';
 
 export type ParamRole =
   | 'main'
@@ -68,6 +68,7 @@ export interface Segment {
   share_note: string;
   limit_rule: string;
   sort: number;
+  is_active?: boolean;
 }
 
 export interface SegmentWeight {
@@ -152,6 +153,7 @@ export interface Equipment {
   category: string;
   price_kz: number;
   active: boolean;
+  is_custom?: boolean;
 }
 
 export interface Customer {
@@ -174,9 +176,10 @@ export interface Evaluation {
   override_reason?: string;
   config_version_id: string;
   wallet_available: boolean;
+  wallet_used?: boolean;
   income_band_code?: number;
   income_source?: 'stated' | 'estimated';
-  status: 'draft' | 'scored' | 'submitted' | 'approved' | 'rejected';
+  status: 'draft' | 'saved' | 'scored' | 'submitted' | 'approved' | 'rejected' | 'purchased';
   created_at: string;
   customer?: Customer;
   results?: EvaluationResult;
@@ -215,9 +218,10 @@ export interface LoanApplication {
   rate_pct: number;
   monthly_emi_kz: number;
   emi_share_pct: number;
-  status: 'submitted' | 'approved' | 'rejected';
+  status: 'draft' | 'saved' | 'submitted' | 'pending' | 'approved' | 'rejected' | 'purchased';
   submitted_by: string;
   submitted_at: string;
+  purchased_at?: string;
   evaluation?: Evaluation;
   equipment?: Equipment;
 }
@@ -253,3 +257,85 @@ export interface AuditLogEntry {
   entity_id: string;
   details: Record<string, unknown>;
 }
+
+// Data Sources (ds_telecom, ds_wallet, ds_bank, ds_assets, ds_utility)
+export interface DataSourceTelecom {
+  id: string;
+  customer_phone: string;
+  tenure_months: number;
+  arpu_kz: number;
+  recharge_regularity: 'regular' | 'irregular' | 'sporadic';
+  airtime_balance_kz: number;
+  sim_swap_count_90d: number;
+  last_sim_swap_days: number;
+  airtime_loan_repaid_pct: number;
+  created_at?: string;
+}
+
+export interface DataSourceWallet {
+  id: string;
+  customer_phone: string;
+  has_wallet: boolean;
+  monthly_turnover_kz: number;
+  cash_in_out_ratio: number;
+  merchant_payments_monthly: number;
+  wallet_tenure_months: number;
+  balance_kz: number;
+  created_at?: string;
+}
+
+export interface DataSourceBank {
+  id: string;
+  customer_phone: string;
+  national_id?: string;
+  has_bank_account: boolean;
+  bank_name?: string;
+  salary_detected: boolean;
+  avg_monthly_salary_kz: number;
+  avg_balance_kz: number;
+  bounced_cheques_12m: number;
+  created_at?: string;
+}
+
+export interface DataSourceAssets {
+  id: string;
+  customer_phone: string;
+  national_id?: string;
+  has_vehicle: boolean;
+  vehicle_type?: 'car' | 'two_wheeler' | 'commercial';
+  has_land_title: boolean;
+  has_registered_house: boolean;
+  verified_source?: string;
+  created_at?: string;
+}
+
+export interface DataSourceUtility {
+  id: string;
+  customer_phone: string;
+  national_id?: string;
+  ende_prepaid_meter?: string;
+  payment_regularity: 'regular' | 'irregular' | 'none';
+  avg_monthly_power_kz: number;
+  created_at?: string;
+}
+
+export interface TelecomRechargeRecord {
+  id?: string;
+  customer_ref: string;
+  month: string; // YYYY-MM
+  recharge_count: number;
+  recharge_value_kz: number;
+  created_at?: string;
+}
+
+export interface DataSourceCheckResult {
+  phone: string;
+  telecom: DataSourceTelecom | null;
+  wallet: DataSourceWallet | null;
+  bank: DataSourceBank | null;
+  assets: DataSourceAssets | null;
+  utility: DataSourceUtility | null;
+  kycMatch: boolean;
+  recharges?: TelecomRechargeRecord[];
+}
+
