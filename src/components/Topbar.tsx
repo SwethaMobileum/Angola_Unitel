@@ -26,7 +26,6 @@ export interface TopbarProps {
 interface NavItem {
   to: string;
   label: string;
-  shortLabel?: string;
   icon?: React.ElementType;
   adminOnly?: boolean;
   iconOnly?: boolean;
@@ -78,22 +77,22 @@ export const Topbar: React.FC<TopbarProps> = ({ isGlass = false }) => {
 
   // Tab definitions: "About Us" first, then respective portal tabs in exact order
   const applicantTabs: NavItem[] = [
-    { to: '/applicant/about', label: 'About Us', shortLabel: 'About', icon: Info },
+    { to: '/applicant/about', label: 'About Us', icon: Info },
     { to: '/applicant/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/applicant/new', label: 'New application', shortLabel: 'New app', icon: UserPlus },
-    { to: '/applicant/applications', label: 'My applications', shortLabel: 'Applications', icon: FileSpreadsheet },
+    { to: '/applicant/new', label: 'New application', icon: UserPlus },
+    { to: '/applicant/applications', label: 'My applications', icon: FileSpreadsheet },
     { to: '/applicant/notifications', label: 'Notifications', icon: Bell },
   ];
 
   const approverTabs: NavItem[] = [
-    { to: '/approver/about', label: 'About Us', shortLabel: 'About', icon: Info },
+    { to: '/approver/about', label: 'About Us', icon: Info },
     { to: '/approver/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/approver/queue', label: 'Applications queue', shortLabel: 'Queue', icon: CheckCircle2 },
-    { to: '/approver/instant-check', label: 'Instant credit check', shortLabel: 'Credit check', icon: UserPlus },
+    { to: '/approver/queue', label: 'Applications queue', icon: CheckCircle2 },
+    { to: '/approver/instant-check', label: 'Instant credit check', icon: UserPlus },
     { to: '/approver/notifications', label: 'Notifications', icon: Bell },
-    { to: '/approver/audit-log', label: 'Audit log', shortLabel: 'Audit', icon: History },
+    { to: '/approver/audit-log', label: 'Audit log', icon: History },
     // Admin only tabs (visible when role is admin)
-    { to: '/approver/points-panel', label: 'Points panel', shortLabel: 'Points', icon: Settings, adminOnly: true },
+    { to: '/approver/points-panel', label: 'Points panel', icon: Settings, adminOnly: true },
     { to: '/approver/segments', label: 'Segments', icon: Layers, adminOnly: true },
     { to: '/approver/data-sources', label: 'Data sources', icon: Database, adminOnly: true, iconOnly: true },
     { to: '/approver/settings', label: 'Settings', icon: Settings, adminOnly: true, iconOnly: true },
@@ -145,7 +144,7 @@ export const Topbar: React.FC<TopbarProps> = ({ isGlass = false }) => {
           </Link>
         </div>
 
-        {/* 2. Centre: Navigation Tabs (Responsive, shrinkable, no horizontal screen blowout) */}
+        {/* 2. Centre: Navigation Tabs (Fixed, consistent labels at all zoom levels) */}
         <nav
           className="hidden lg:flex items-center justify-center gap-0.5 xl:gap-1 2xl:gap-1.5 flex-1 min-w-0 mx-1.5 xl:mx-2.5 relative overflow-x-auto no-scrollbar h-16"
           aria-label="Portal Navigation"
@@ -161,7 +160,7 @@ export const Topbar: React.FC<TopbarProps> = ({ isGlass = false }) => {
                 title={tab.label}
                 aria-label={tab.label}
                 className={`h-16 inline-flex items-center justify-center ${
-                  tab.iconOnly ? 'w-8 xl:w-9 px-0' : 'px-1.5 xl:px-2.5 2xl:px-3.5'
+                  tab.iconOnly ? 'w-8 xl:w-9 px-0' : 'px-2 xl:px-2.5 2xl:px-3.5'
                 } text-xs xl:text-[13px] font-heading transition-colors duration-150 relative select-none whitespace-nowrap cursor-pointer hover:text-orange hover:bg-orange-soft/30 active:scale-95 shrink-0 ${
                   active ? 'text-orange font-bold' : 'text-slate-600 font-medium'
                 }`}
@@ -169,16 +168,7 @@ export const Topbar: React.FC<TopbarProps> = ({ isGlass = false }) => {
                 {tab.iconOnly && Icon ? (
                   <Icon className="w-4 h-4 shrink-0 transition-transform hover:scale-110" />
                 ) : (
-                  <span>
-                    {tab.shortLabel ? (
-                      <>
-                        <span className="hidden 2xl:inline">{tab.label}</span>
-                        <span className="inline 2xl:hidden">{tab.shortLabel}</span>
-                      </>
-                    ) : (
-                      tab.label
-                    )}
-                  </span>
+                  <span>{tab.label}</span>
                 )}
                 {/* Active indicator: Always exactly under the active tab element! */}
                 {active && (
