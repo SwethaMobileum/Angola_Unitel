@@ -6,7 +6,14 @@ import {
 } from '../types';
 import { DEFAULT_EQUIPMENT } from '../data/seedData';
 import { getStoredEvaluations } from './evaluations';
-import { dispatchTransactionalEmail, generateLoanEmailHtml } from './supabaseSync';
+import {
+  dispatchTransactionalEmail,
+  generateLoanEmailHtml,
+  syncApplicationToSupabase,
+  syncApprovalToSupabase,
+  syncNotificationToSupabase,
+  syncAuditLogToSupabase,
+} from './supabaseSync';
 import { syncApi } from './syncClient';
 
 const STORAGE_KEY_APPLICATIONS = 'unitel_credit_applications_v2';
@@ -166,6 +173,7 @@ export function softDeleteApplication(id: string, actorName: string = 'Tomas Sil
       });
 
       syncApi.updateApplication(id, { deleted_at: new Date().toISOString() });
+      syncApplicationToSupabase(allApps[index]);
     }
   } catch (e) {
     console.error('Error soft deleting application:', e);
@@ -510,12 +518,9 @@ export function getStoredApplications(includeDeleted: boolean = false): LoanAppl
       return includeDeleted ? seed.applications : seed.applications.filter(a => !a.deleted_at);
     }
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length < 8) {
+    if (!Array.isArray(parsed)) {
       const seed = createSeedLoanData();
       localStorage.setItem(STORAGE_KEY_APPLICATIONS, JSON.stringify(seed.applications));
-      localStorage.setItem(STORAGE_KEY_APPROVALS, JSON.stringify(seed.approvals));
-      localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, JSON.stringify(seed.notifications));
-      localStorage.setItem(STORAGE_KEY_AUDIT_LOG, JSON.stringify(seed.auditLogs));
       return includeDeleted ? seed.applications : seed.applications.filter(a => !a.deleted_at);
     }
     const list: LoanApplication[] = parsed;
@@ -533,8 +538,9 @@ export function saveApplication(app: LoanApplication, analystEmail: string = 'bh
     localStorage.setItem(STORAGE_KEY_APPLICATIONS, JSON.stringify(current));
   }
 
-  // Cross-port sync to shared DB and Supabase
+  // Cross-port sync to shared DB and direct Supabase PostgreSQL
   syncApi.createApplication(app);
+  syncApplicationToSupabase(app);
 
   const recipient = analystEmail && analystEmail.includes('@')
     ? analystEmail
@@ -603,6 +609,7 @@ export function updateApplicationStatus(id: string, status: LoanApplication['sta
       localStorage.setItem(STORAGE_KEY_APPLICATIONS, JSON.stringify(current));
     }
     syncApi.updateApplication(id, { status, ...extra });
+    syncApplicationToSupabase(current[index]);
   }
 }
 
@@ -659,6 +666,10 @@ export function processApprovalDecision(
     approverName,
     applicantEmail,
   });
+  syncApprovalToSupabase(newApproval);
+  if (appIndex >= 0 && apps[appIndex]) {
+    syncApplicationToSupabase(apps[appIndex]);
+  }
 
   // 3. Generate Decision Email HTML
   const targetApp = apps[appIndex];
@@ -738,6 +749,8 @@ export function addNotification(record: NotificationRecord): void {
     if (typeof window !== 'undefined' && window.localStorage) {
       localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, JSON.stringify(current));
     }
+    syncApi.addNotification(record);
+    syncNotificationToSupabase(record);
   } catch (err) {
     console.warn('Failed to save notification', err);
   }
@@ -763,6 +776,8 @@ export function addAuditLogEntry(entry: AuditLogEntry): void {
     if (typeof window !== 'undefined' && window.localStorage) {
       localStorage.setItem(STORAGE_KEY_AUDIT_LOG, JSON.stringify(current));
     }
+    syncApi.addAuditLog(entry);
+    syncAuditLogToSupabase(entry);
   } catch (err) {
     console.warn('Failed to save audit log', err);
   }

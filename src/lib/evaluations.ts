@@ -2,6 +2,7 @@ import { Evaluation, Customer, SegmentCode } from '../types';
 import { calculateCreditScore } from './scoring';
 import { SAMPLE_CUSTOMERS } from '../data/seedData';
 import { syncApi } from './syncClient';
+import { syncEvaluationToSupabase } from './supabaseSync';
 
 const STORAGE_KEY_EVALUATIONS = 'unitel_credit_evaluations_v2';
 const STORAGE_KEY_DRAFT = 'unitel_credit_eval_draft_v2';
@@ -549,7 +550,7 @@ export function getStoredEvaluations(): Evaluation[] {
       return seed;
     }
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length < 8) {
+    if (!Array.isArray(parsed)) {
       const seed = createSeedEvaluations();
       localStorage.setItem(STORAGE_KEY_EVALUATIONS, JSON.stringify(seed));
       return seed;
@@ -573,8 +574,9 @@ export function saveEvaluation(evaluation: Evaluation): void {
     if (typeof window !== 'undefined' && window.localStorage) {
       localStorage.setItem(STORAGE_KEY_EVALUATIONS, JSON.stringify(current));
     }
-    // Cross-port sync to shared DB
+    // Cross-port sync to shared DB and direct Supabase sync
     syncApi.saveEvaluation(evaluation);
+    syncEvaluationToSupabase(evaluation);
   } catch (err) {
     console.warn('Failed to save evaluation', err);
   }

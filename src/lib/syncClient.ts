@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { LoanApplication, Evaluation, NotificationRecord, AuditLogEntry } from '../types';
+import { fetchAllFromSupabase, syncAllLocalDataToSupabase } from './supabaseSync';
 
 const STORAGE_KEY_APPLICATIONS = 'unitel_credit_applications_v2';
 const STORAGE_KEY_APPROVALS = 'unitel_credit_approvals_v2';
@@ -11,6 +12,31 @@ let eventSourceInstance: EventSource | null = null;
 let isInitialized = false;
 
 /**
+ * Merge two lists by record id without losing locally created records
+ */
+function mergeById<T extends { id: any }>(existing: T[], incoming: T[]): T[] {
+  const map = new Map<any, T>();
+  // Existing local items first (preserves local records)
+  for (const item of existing) {
+    if (item && item.id !== undefined) {
+      map.set(item.id, item);
+    }
+  }
+  // Incoming items update existing or add new ones
+  for (const item of incoming) {
+    if (item && item.id !== undefined) {
+      const prev = map.get(item.id);
+      if (prev) {
+        map.set(item.id, { ...prev, ...item });
+      } else {
+        map.set(item.id, item);
+      }
+    }
+  }
+  return Array.from(map.values());
+}
+
+/**
  * Determine the shared API base URL.
  * Defaults to current origin, or http://localhost:5173 if running on another host/port.
  */
@@ -20,26 +46,41 @@ export function getApiBaseUrl(): string {
 }
 
 /**
- * Save incoming synchronized database state into localStorage and notify React components
+ * Non-destructively merge incoming synchronized database state into localStorage and notify React components
  */
 function applySynchronizedState(data: any) {
   if (typeof window === 'undefined' || !window.localStorage) return;
 
   try {
     if (data.allApps && Array.isArray(data.allApps)) {
-      localStorage.setItem(STORAGE_KEY_APPLICATIONS, JSON.stringify(data.allApps));
+      const rawCurrent = localStorage.getItem(STORAGE_KEY_APPLICATIONS);
+      const currentList = rawCurrent ? JSON.parse(rawCurrent) : [];
+      const merged = mergeById(currentList, data.allApps);
+      localStorage.setItem(STORAGE_KEY_APPLICATIONS, JSON.stringify(merged));
     }
     if (data.allApprovals && Array.isArray(data.allApprovals)) {
-      localStorage.setItem(STORAGE_KEY_APPROVALS, JSON.stringify(data.allApprovals));
+      const rawCurrent = localStorage.getItem(STORAGE_KEY_APPROVALS);
+      const currentList = rawCurrent ? JSON.parse(rawCurrent) : [];
+      const merged = mergeById(currentList, data.allApprovals);
+      localStorage.setItem(STORAGE_KEY_APPROVALS, JSON.stringify(merged));
     }
     if (data.allEvaluations && Array.isArray(data.allEvaluations)) {
-      localStorage.setItem(STORAGE_KEY_EVALUATIONS, JSON.stringify(data.allEvaluations));
+      const rawCurrent = localStorage.getItem(STORAGE_KEY_EVALUATIONS);
+      const currentList = rawCurrent ? JSON.parse(rawCurrent) : [];
+      const merged = mergeById(currentList, data.allEvaluations);
+      localStorage.setItem(STORAGE_KEY_EVALUATIONS, JSON.stringify(merged));
     }
     if (data.allNotifications && Array.isArray(data.allNotifications)) {
-      localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, JSON.stringify(data.allNotifications));
+      const rawCurrent = localStorage.getItem(STORAGE_KEY_NOTIFICATIONS);
+      const currentList = rawCurrent ? JSON.parse(rawCurrent) : [];
+      const merged = mergeById(currentList, data.allNotifications);
+      localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, JSON.stringify(merged));
     }
     if (data.allAuditLogs && Array.isArray(data.allAuditLogs)) {
-      localStorage.setItem(STORAGE_KEY_AUDIT_LOG, JSON.stringify(data.allAuditLogs));
+      const rawCurrent = localStorage.getItem(STORAGE_KEY_AUDIT_LOG);
+      const currentList = rawCurrent ? JSON.parse(rawCurrent) : [];
+      const merged = mergeById(currentList, data.allAuditLogs);
+      localStorage.setItem(STORAGE_KEY_AUDIT_LOG, JSON.stringify(merged));
     }
 
     // Broadcast browser-wide custom event so active views re-render instantly
@@ -50,66 +91,92 @@ function applySynchronizedState(data: any) {
 }
 
 /**
- * Initialize the real-time SSE listener and fetch initial state from shared DB
+ * Initialize the real-time Supabase hydration and SSE listener
  */
 export function initSyncClient(): void {
   if (typeof window === 'undefined' || isInitialized) return;
   isInitialized = true;
 
-  // 1. Initial State Hydration from Shared DB
-  fetch(`${getApiBaseUrl()}/api/db/all`)
-    .then((res) => {
-      if (res.ok) return res.json();
-      throw new Error(`DB fetch returned status ${res.status}`);
-    })
-    .then((db) => {
-      applySynchronizedState({
-        allApps: db.applications,
-        allApprovals: db.approvals,
-        allEvaluations: db.evaluations,
-        allNotifications: db.notifications,
-        allAuditLogs: db.auditLogs,
-      });
+  // 1. Initial State Hydration from Supabase Cloud (Single Source of Truth)
+  fetchAllFromSupabase()
+    .then((cloudData) => {
+      if (cloudData) {
+        applySynchronizedState({
+          allApps: cloudData.applications,
+          allApprovals: cloudData.approvals,
+          allEvaluations: cloudData.evaluations,
+          allNotifications: cloudData.notifications,
+          allAuditLogs: cloudData.auditLogs,
+        });
+      }
+      // Also push any local data not yet in Supabase
+      syncAllLocalDataToSupabase();
     })
     .catch((err) => {
-      console.warn('[SyncClient] Initial DB hydration note:', err.message);
+      console.warn('[SyncClient] Supabase hydration notice:', err.message);
     });
 
-  // 2. Connect to Server-Sent Events (SSE) stream for instant live updates
-  const connectSSE = () => {
-    try {
-      if (eventSourceInstance) {
-        eventSourceInstance.close();
-      }
+  // 2. Secondary: Hydration from Local Vite dev server (if on localhost)
+  const isLocalHost = typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-      eventSourceInstance = new EventSource(`${getApiBaseUrl()}/api/db/events`);
-
-      eventSourceInstance.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'CONNECTED') {
-            return;
-          }
-          applySynchronizedState(data);
-        } catch (err) {
-          console.warn('[SyncClient] SSE parse error:', err);
+  if (isLocalHost) {
+    fetch(`${getApiBaseUrl()}/api/db/all`)
+      .then((res) => {
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          return res.json();
         }
-      };
+        throw new Error(`DB fetch returned non-json: ${contentType}`);
+      })
+      .then((db) => {
+        applySynchronizedState({
+          allApps: db.applications,
+          allApprovals: db.approvals,
+          allEvaluations: db.evaluations,
+          allNotifications: db.notifications,
+          allAuditLogs: db.auditLogs,
+        });
+      })
+      .catch(() => {
+        // Normal in static or offline environments
+      });
 
-      eventSourceInstance.onerror = () => {
-        // Automatically retry after 3 seconds if disconnected
+    // 3. Connect to Server-Sent Events (SSE) stream for instant live updates between local ports
+    const connectSSE = () => {
+      try {
         if (eventSourceInstance) {
           eventSourceInstance.close();
-          eventSourceInstance = null;
         }
-        setTimeout(connectSSE, 3000);
-      };
-    } catch (err) {
-      console.warn('[SyncClient] EventSource init error:', err);
-    }
-  };
 
-  connectSSE();
+        eventSourceInstance = new EventSource(`${getApiBaseUrl()}/api/db/events`);
+
+        eventSourceInstance.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'CONNECTED') {
+              return;
+            }
+            applySynchronizedState(data);
+          } catch (err) {
+            console.warn('[SyncClient] SSE parse error:', err);
+          }
+        };
+
+        eventSourceInstance.onerror = () => {
+          if (eventSourceInstance) {
+            eventSourceInstance.close();
+            eventSourceInstance = null;
+          }
+          setTimeout(connectSSE, 5000);
+        };
+      } catch (err) {
+        console.warn('[SyncClient] EventSource init error:', err);
+      }
+    };
+
+    connectSSE();
+  }
 }
 
 /**

@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
-import { Evaluation } from '../types';
+import { Evaluation, LoanApplication, Approval, NotificationRecord, AuditLogEntry } from '../types';
 
 export interface EmailSendParams {
   to: string;
@@ -388,10 +388,12 @@ export async function syncEvaluationToSupabase(evalRecord: Evaluation): Promise<
       await supabase.from('customers').upsert({
         id: evalRecord.customer.id,
         full_name: evalRecord.customer.full_name,
+        email: evalRecord.customer.email || null,
         msisdn: evalRecord.customer.msisdn,
         national_id_masked: evalRecord.customer.national_id_masked,
         date_of_birth: evalRecord.customer.date_of_birth,
         sim_activation_date: evalRecord.customer.sim_activation_date,
+        created_by: evalRecord.customer.created_by || null,
       });
     }
 
@@ -401,18 +403,232 @@ export async function syncEvaluationToSupabase(evalRecord: Evaluation): Promise<
       analyst_id: evalRecord.analyst_id,
       segment_code: evalRecord.segment_code,
       segment_overridden: evalRecord.segment_overridden,
-      override_reason: evalRecord.override_reason,
+      override_reason: evalRecord.override_reason || null,
       config_version_id: evalRecord.config_version_id,
       wallet_available: evalRecord.wallet_available,
-      income_band_code: evalRecord.income_band_code,
-      income_source: evalRecord.income_source,
+      wallet_used: evalRecord.wallet_used ?? false,
+      income_band_code: evalRecord.income_band_code || null,
+      income_source: evalRecord.income_source || 'estimated',
       status: evalRecord.status,
       created_at: evalRecord.created_at,
+      deleted_at: evalRecord.deleted_at || null,
+      customer: evalRecord.customer || null,
+      results: evalRecord.results || null,
     });
 
-    return !error;
-  } catch (err) {
-    console.warn('Supabase sync skipped:', err);
+    if (error) {
+      console.warn('[SupabaseSync] Evaluation sync notice:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.warn('[SupabaseSync] Evaluation sync error:', err.message);
     return false;
+  }
+}
+
+/**
+ * Sync loan application to Supabase cloud PostgreSQL
+ */
+export async function syncApplicationToSupabase(app: LoanApplication): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+  try {
+    if (app.evaluation) {
+      await syncEvaluationToSupabase(app.evaluation);
+    }
+
+    if (app.equipment) {
+      await supabase.from('equipment').upsert({
+        id: app.equipment.id,
+        name: app.equipment.name,
+        category: app.equipment.category,
+        price_kz: app.equipment.price_kz,
+        active: app.equipment.active ?? true,
+        is_custom: app.equipment.is_custom ?? false,
+      });
+    }
+
+    const { error } = await supabase.from('loan_applications').upsert({
+      id: app.id,
+      evaluation_id: app.evaluation_id,
+      equipment_id: app.equipment_id,
+      price_kz: app.price_kz,
+      term_months: app.term_months,
+      rate_pct: app.rate_pct ?? 0,
+      monthly_emi_kz: app.monthly_emi_kz,
+      emi_share_pct: app.emi_share_pct,
+      status: app.status,
+      submitted_by: app.submitted_by,
+      submitted_at: app.submitted_at,
+      purchased_at: app.purchased_at || null,
+      deleted_at: app.deleted_at || null,
+      evaluation: app.evaluation || null,
+      equipment: app.equipment || null,
+    });
+
+    if (error) {
+      console.warn('[SupabaseSync] Loan application sync notice:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.warn('[SupabaseSync] Loan application sync error:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Sync approval record to Supabase
+ */
+export async function syncApprovalToSupabase(approval: Approval): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+  try {
+    const { error } = await supabase.from('approvals').upsert({
+      id: approval.id,
+      application_id: approval.application_id,
+      approver_id: approval.approver_id,
+      decision: approval.decision,
+      reason: approval.reason,
+      decided_at: approval.decided_at,
+    });
+    return !error;
+  } catch (err: any) {
+    console.warn('[SupabaseSync] Approval sync error:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Sync notification record to Supabase
+ */
+export async function syncNotificationToSupabase(notif: NotificationRecord): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+  try {
+    const { error } = await supabase.from('notifications').upsert({
+      id: notif.id,
+      application_id: notif.application_id || null,
+      to_email: notif.to_email,
+      kind: notif.kind,
+      subject: notif.subject,
+      body: notif.body,
+      html_body: notif.html_body || null,
+      status: notif.status,
+      created_at: notif.created_at,
+    });
+    return !error;
+  } catch (err: any) {
+    console.warn('[SupabaseSync] Notification sync error:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Sync audit log entry to Supabase
+ */
+export async function syncAuditLogToSupabase(entry: AuditLogEntry): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+  try {
+    const { error } = await supabase.from('audit_log').upsert({
+      id: entry.id,
+      at: entry.at,
+      actor: entry.actor || null,
+      actor_name: entry.actor_name || null,
+      action: entry.action,
+      entity: entry.entity,
+      entity_id: entry.entity_id,
+      details: entry.details || null,
+    });
+    return !error;
+  } catch (err: any) {
+    console.warn('[SupabaseSync] Audit log sync error:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Fetch all records from Supabase PostgreSQL
+ */
+export async function fetchAllFromSupabase(): Promise<{
+  applications?: LoanApplication[];
+  evaluations?: Evaluation[];
+  notifications?: NotificationRecord[];
+  approvals?: Approval[];
+  auditLogs?: AuditLogEntry[];
+} | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const [appsRes, evalsRes, notifsRes, approvalsRes, auditRes] = await Promise.all([
+      supabase.from('loan_applications').select('*').order('submitted_at', { ascending: false }),
+      supabase.from('evaluations').select('*').order('created_at', { ascending: false }),
+      supabase.from('notifications').select('*').order('created_at', { ascending: false }),
+      supabase.from('approvals').select('*').order('decided_at', { ascending: false }),
+      supabase.from('audit_log').select('*').order('at', { ascending: false }),
+    ]);
+
+    if (appsRes.error && appsRes.error.code === 'PGRST205') {
+      return null;
+    }
+
+    return {
+      applications: (appsRes.data as LoanApplication[]) || undefined,
+      evaluations: (evalsRes.data as Evaluation[]) || undefined,
+      notifications: (notifsRes.data as NotificationRecord[]) || undefined,
+      approvals: (approvalsRes.data as Approval[]) || undefined,
+      auditLogs: (auditRes.data as AuditLogEntry[]) || undefined,
+    };
+  } catch (err: any) {
+    console.warn('[SupabaseSync] fetchAllFromSupabase note:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Bulk sync all existing localStorage datasets to Supabase PostgreSQL
+ */
+export async function syncAllLocalDataToSupabase(): Promise<void> {
+  if (!isSupabaseConfigured || typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const rawApps = localStorage.getItem('unitel_credit_applications_v2');
+    const rawEvals = localStorage.getItem('unitel_credit_evaluations_v2');
+    const rawNotifs = localStorage.getItem('unitel_credit_notifications_v2');
+    const rawApprovals = localStorage.getItem('unitel_credit_approvals_v2');
+    const rawAudit = localStorage.getItem('unitel_credit_audit_log_v2');
+
+    if (rawEvals) {
+      const evals: Evaluation[] = JSON.parse(rawEvals);
+      for (const ev of evals) {
+        await syncEvaluationToSupabase(ev);
+      }
+    }
+
+    if (rawApps) {
+      const apps: LoanApplication[] = JSON.parse(rawApps);
+      for (const app of apps) {
+        await syncApplicationToSupabase(app);
+      }
+    }
+
+    if (rawNotifs) {
+      const notifs: NotificationRecord[] = JSON.parse(rawNotifs);
+      for (const n of notifs) {
+        await syncNotificationToSupabase(n);
+      }
+    }
+
+    if (rawApprovals) {
+      const apprs: Approval[] = JSON.parse(rawApprovals);
+      for (const a of apprs) {
+        await syncApprovalToSupabase(a);
+      }
+    }
+
+    if (rawAudit) {
+      const logs: AuditLogEntry[] = JSON.parse(rawAudit);
+      for (const l of logs) {
+        await syncAuditLogToSupabase(l);
+      }
+    }
+  } catch (err: any) {
+    console.warn('[SupabaseSync] Initial syncAllLocalDataToSupabase note:', err.message);
   }
 }
