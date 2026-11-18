@@ -118,7 +118,7 @@ export const Topbar: React.FC<TopbarProps> = ({ isGlass = false }) => {
 
   return (
     <header
-      className={`sticky top-0 z-30 bg-white border-b border-orange-border/80 shadow-xs text-slate-800 transition-all duration-300 max-w-full overflow-hidden ${
+      className={`sticky top-0 z-50 bg-white border-b border-orange-border/80 shadow-xs text-slate-800 transition-all duration-300 w-full ${
         isGlass ? 'bg-slate-950/75 backdrop-blur-md border-b border-white/15 text-white' : ''
       }`}
     >
@@ -274,7 +274,7 @@ export const Topbar: React.FC<TopbarProps> = ({ isGlass = false }) => {
             {/* Role Switcher Dropdown Menu */}
             {isProfileOpen && !isApplicant && (
               <div
-                className="absolute right-0 mt-2 w-72 rounded-2xl bg-white border border-orange-border/90 shadow-2xl p-2 z-50 text-slate-800 animate-in fade-in slide-in-from-top-2 duration-150"
+                className="absolute right-0 mt-2 w-72 rounded-2xl bg-white border border-orange-border/90 shadow-2xl p-2 z-[60] text-slate-800 animate-in fade-in slide-in-from-top-2 duration-150"
                 role="menu"
               >
                 <div className="px-3 py-1.5 border-b border-orange-border/40">
