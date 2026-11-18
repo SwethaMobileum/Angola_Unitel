@@ -205,7 +205,7 @@ export const ApplicantDashboard: React.FC = () => {
   const agentDisplayName = currentUser?.full_name ? currentUser.full_name.replace(' (Applicant)', '') : 'Tomas Silva';
 
   return (
-    <div className="space-y-6 pb-12 w-full min-w-0 animate-in fade-in duration-200">
+    <div className="space-y-6 pb-12 w-full min-w-0 max-w-full animate-in fade-in duration-200">
       {/* 1. Store Agent & Desk Header */}
       <section className="bg-gradient-to-r from-orange to-[#D95510] text-white rounded-2xl p-6 sm:p-8 shadow-md relative overflow-hidden border-2 border-orange">
         {/* Subtle decorative circles */}

@@ -754,7 +754,7 @@ export const NewEvaluation: React.FC = () => {
   const customSharePct = Math.round((customMonthlyEmi6 / (incomeEstimateKz || 1)) * 1000) / 10;
 
   return (
-    <div className="space-y-4 w-full min-w-0 pb-10">
+    <div className="space-y-4 w-full min-w-0 max-w-full pb-10">
       {/* 1. STICKY PROGRESS BAR (Shows 'You Are Here' & X of 6 Done) */}
       <div className="sticky top-0 z-30 bg-cream/95 backdrop-blur-md pt-1 pb-3 border-b border-orange-200/50 shadow-xs">
         <div className="flex items-center justify-between px-4 py-2 bg-card rounded-2xl border-2 border-orange shadow-sm">

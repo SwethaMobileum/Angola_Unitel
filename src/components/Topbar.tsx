@@ -26,6 +26,7 @@ export interface TopbarProps {
 interface NavItem {
   to: string;
   label: string;
+  shortLabel?: string;
   icon?: React.ElementType;
   adminOnly?: boolean;
   iconOnly?: boolean;
@@ -77,22 +78,22 @@ export const Topbar: React.FC<TopbarProps> = ({ isGlass = false }) => {
 
   // Tab definitions: "About Us" first, then respective portal tabs in exact order
   const applicantTabs: NavItem[] = [
-    { to: '/applicant/about', label: 'About Us', icon: Info },
+    { to: '/applicant/about', label: 'About Us', shortLabel: 'About', icon: Info },
     { to: '/applicant/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/applicant/new', label: 'New application', icon: UserPlus },
-    { to: '/applicant/applications', label: 'My applications', icon: FileSpreadsheet },
+    { to: '/applicant/new', label: 'New application', shortLabel: 'New app', icon: UserPlus },
+    { to: '/applicant/applications', label: 'My applications', shortLabel: 'Applications', icon: FileSpreadsheet },
     { to: '/applicant/notifications', label: 'Notifications', icon: Bell },
   ];
 
   const approverTabs: NavItem[] = [
-    { to: '/approver/about', label: 'About Us', icon: Info },
+    { to: '/approver/about', label: 'About Us', shortLabel: 'About', icon: Info },
     { to: '/approver/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/approver/queue', label: 'Applications queue', icon: CheckCircle2 },
-    { to: '/approver/instant-check', label: 'Instant credit check', icon: UserPlus },
+    { to: '/approver/queue', label: 'Applications queue', shortLabel: 'Queue', icon: CheckCircle2 },
+    { to: '/approver/instant-check', label: 'Instant credit check', shortLabel: 'Credit check', icon: UserPlus },
     { to: '/approver/notifications', label: 'Notifications', icon: Bell },
-    { to: '/approver/audit-log', label: 'Audit log', icon: History },
+    { to: '/approver/audit-log', label: 'Audit log', shortLabel: 'Audit', icon: History },
     // Admin only tabs (visible when role is admin)
-    { to: '/approver/points-panel', label: 'Points panel', icon: Settings, adminOnly: true },
+    { to: '/approver/points-panel', label: 'Points panel', shortLabel: 'Points', icon: Settings, adminOnly: true },
     { to: '/approver/segments', label: 'Segments', icon: Layers, adminOnly: true },
     { to: '/approver/data-sources', label: 'Data sources', icon: Database, adminOnly: true, iconOnly: true },
     { to: '/approver/settings', label: 'Settings', icon: Settings, adminOnly: true, iconOnly: true },
@@ -118,35 +119,35 @@ export const Topbar: React.FC<TopbarProps> = ({ isGlass = false }) => {
 
   return (
     <header
-      className={`sticky top-0 z-30 bg-white border-b border-orange-border/80 shadow-xs text-slate-800 transition-all duration-300 ${
+      className={`sticky top-0 z-30 bg-white border-b border-orange-border/80 shadow-xs text-slate-800 transition-all duration-300 max-w-full overflow-hidden ${
         isGlass ? 'bg-slate-950/75 backdrop-blur-md border-b border-white/15 text-white' : ''
       }`}
     >
-      <div className="w-full px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16 relative">
+      <div className="w-full max-w-full px-3 sm:px-4 lg:px-6 flex items-center justify-between h-16 relative min-w-0">
         {/* 1. Left Top Corner: Unitel Telecom Brand Logo & Title */}
-        <div className="flex items-center shrink-0 lg:min-w-[170px]">
+        <div className="flex items-center shrink-0">
           <Link
             to={landingTarget}
             title="Return to Unitel Landing Page"
-            className="flex items-center gap-2.5 group cursor-pointer py-1"
+            className="flex items-center gap-2 group cursor-pointer py-1"
           >
-            <div className="w-8 h-8 rounded-xl bg-orange flex items-center justify-center text-white font-black text-xs tracking-wider shadow-sm shadow-orange/30 border border-orange-btn group-hover:scale-105 transition-transform">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-orange flex items-center justify-center text-white font-black text-xs tracking-wider shadow-sm shadow-orange/30 border border-orange-btn group-hover:scale-105 transition-transform shrink-0">
               UCI
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="font-heading font-black text-xs sm:text-sm tracking-wide uppercase leading-tight text-slate-900 group-hover:text-orange transition-colors">
+              <span className="font-heading font-black text-xs sm:text-sm tracking-wide uppercase leading-tight text-slate-900 group-hover:text-orange transition-colors truncate">
                 Unitel Telecom
               </span>
-              <span className="text-[10px] font-bold tracking-wider text-orange leading-none mt-0.5">
+              <span className="text-[9px] sm:text-[10px] font-bold tracking-wider text-orange leading-none mt-0.5">
                 Credit Financing
               </span>
             </div>
           </Link>
         </div>
 
-        {/* 2. Centre: Only Navigation Tabs (Centered, no scrollbar bar, perfectly coordinated underline) */}
+        {/* 2. Centre: Navigation Tabs (Responsive, shrinkable, no horizontal screen blowout) */}
         <nav
-          className="hidden lg:flex items-center justify-center gap-1 xl:gap-2 flex-1 mx-4 relative overflow-visible h-16"
+          className="hidden lg:flex items-center justify-center gap-0.5 xl:gap-1 2xl:gap-1.5 flex-1 min-w-0 mx-1.5 xl:mx-2.5 relative overflow-x-auto no-scrollbar h-16"
           aria-label="Portal Navigation"
         >
           {currentTabs.map((tab) => {
@@ -160,20 +161,29 @@ export const Topbar: React.FC<TopbarProps> = ({ isGlass = false }) => {
                 title={tab.label}
                 aria-label={tab.label}
                 className={`h-16 inline-flex items-center justify-center ${
-                  tab.iconOnly ? 'w-10 px-0' : 'px-3.5'
-                } text-[13px] font-heading transition-colors duration-150 relative select-none whitespace-nowrap cursor-pointer hover:text-orange hover:bg-orange-soft/30 active:scale-95 ${
+                  tab.iconOnly ? 'w-8 xl:w-9 px-0' : 'px-1.5 xl:px-2.5 2xl:px-3.5'
+                } text-xs xl:text-[13px] font-heading transition-colors duration-150 relative select-none whitespace-nowrap cursor-pointer hover:text-orange hover:bg-orange-soft/30 active:scale-95 shrink-0 ${
                   active ? 'text-orange font-bold' : 'text-slate-600 font-medium'
                 }`}
               >
                 {tab.iconOnly && Icon ? (
                   <Icon className="w-4 h-4 shrink-0 transition-transform hover:scale-110" />
                 ) : (
-                  <span>{tab.label}</span>
+                  <span>
+                    {tab.shortLabel ? (
+                      <>
+                        <span className="hidden 2xl:inline">{tab.label}</span>
+                        <span className="inline 2xl:hidden">{tab.shortLabel}</span>
+                      </>
+                    ) : (
+                      tab.label
+                    )}
+                  </span>
                 )}
                 {/* Active indicator: Always exactly under the active tab element! */}
                 {active && (
                   <span
-                    className="absolute bottom-0 left-2 right-2 h-[3px] bg-orange rounded-full shadow-xs shadow-orange/40 animate-in fade-in zoom-in-95 duration-200"
+                    className="absolute bottom-0 left-1 right-1 h-[3px] bg-orange rounded-full shadow-xs shadow-orange/40 animate-in fade-in zoom-in-95 duration-200"
                   />
                 )}
               </NavLink>
@@ -182,7 +192,7 @@ export const Topbar: React.FC<TopbarProps> = ({ isGlass = false }) => {
         </nav>
 
         {/* 3. Right Top Corner: Compact Controls (Wallet Toggle & Role Switcher) */}
-        <div className="flex items-center justify-end gap-2 sm:gap-2.5 shrink-0 lg:min-w-[170px]">
+        <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0">
           {!isAboutPage && (
             <>
               {/* Button 1: Reduced-size Wallet Toggle Switch */}

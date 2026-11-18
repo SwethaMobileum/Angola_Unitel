@@ -144,7 +144,7 @@ export const Approvals: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 w-full min-w-0 pb-8">
+    <div className="space-y-4 w-full min-w-0 max-w-full pb-8">
       {/* Page Header */}
       <PageHeader
         title="Applications Queue"
@@ -220,9 +220,9 @@ export const Approvals: React.FC = () => {
           </div>
 
           {/* Compact Table (6-8 rows per page) */}
-          <div className="bg-card rounded-2xl border-2 border-orange shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+          <div className="bg-card rounded-2xl border-2 border-orange shadow-xs overflow-hidden w-full">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left text-xs min-w-[720px]">
                 <thead className="bg-slate-50 border-b border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                   <tr>
                     <th className="py-3 px-4 w-24">Ref</th>

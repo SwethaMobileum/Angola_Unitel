@@ -67,8 +67,8 @@ export const Heatmap: React.FC<HeatmapProps> = ({
   };
 
   return (
-    <div className={`overflow-x-auto rounded-lg border border-slate-border shadow-sm bg-white ${className}`}>
-      <table className="min-w-full divide-y divide-slate-border text-sm">
+    <div className={`overflow-x-auto w-full rounded-lg border border-slate-border shadow-sm bg-white ${className}`}>
+      <table className="min-w-full divide-y divide-slate-border text-sm min-w-[650px]">
         <thead className="bg-slate-50 text-navy font-semibold">
           <tr>
             <th className="py-3 px-4 text-left">Segment</th>

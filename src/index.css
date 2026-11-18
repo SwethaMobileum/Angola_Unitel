@@ -17,6 +17,13 @@
     --color-card: #FFFFFF;
   }
 
+  html,
+  body,
+  #root {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
   body {
     background: linear-gradient(135deg, #FFF7EC 0%, #FFF3E5 50%, #FFE8D1 100%);
     background-attachment: fixed;
@@ -296,4 +303,12 @@ textarea.input-base {
   border: 2.5px solid #FFFFFF;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
   cursor: pointer;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

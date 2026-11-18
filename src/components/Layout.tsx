@@ -57,15 +57,15 @@ export const Layout: React.FC = () => {
     isAboutPage;
 
   return (
-    <div className="flex flex-col min-h-screen bg-bg text-slate-800">
+    <div className="flex flex-col min-h-screen bg-bg text-slate-800 w-full max-w-[100vw] overflow-x-hidden">
       {/* Modern Top Navigation Bar with Horizontal Tabs */}
       <Topbar />
 
       {/* Main Full-Width Content Container without artificial side gaps */}
-      <main className={`flex-1 w-full min-w-0 ${isAboutPage ? 'p-0' : 'p-4 sm:p-6 lg:p-8'}`}>
+      <main className={`flex-1 w-full min-w-0 max-w-full overflow-x-hidden ${isAboutPage ? 'p-0' : 'p-3 sm:p-5 lg:p-6'}`}>
         {/* Subtle compact back button (visible only on non-dashboard sub-pages) */}
         {!isDashboard && (
-          <div className="mb-4">
+          <div className="mb-3">
             <button
               type="button"
               onClick={handleBack}
@@ -79,7 +79,7 @@ export const Layout: React.FC = () => {
         )}
 
         {/* Smooth route transition on tab switch */}
-        <div key={pathname} className="animate-in fade-in-50 slide-in-from-bottom-2 duration-300 ease-out">
+        <div key={pathname} className="w-full min-w-0 max-w-full animate-in fade-in-50 slide-in-from-bottom-2 duration-300 ease-out">
           <Outlet />
         </div>
       </main>

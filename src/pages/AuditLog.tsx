@@ -39,7 +39,7 @@ export const AuditLog: React.FC = () => {
   });
 
   return (
-    <div className="space-y-6 w-full min-w-0">
+    <div className="space-y-6 w-full min-w-0 max-w-full">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-navy">{COPY.nav.auditLog}</h1>
@@ -93,9 +93,9 @@ export const AuditLog: React.FC = () => {
       </div>
 
       {/* Audit Log Table */}
-      <div className="card-warm bg-white border-2 border-orange overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-xs">
+      <div className="card-warm bg-white border-2 border-orange overflow-hidden shadow-xs w-full">
+        <div className="overflow-x-auto w-full">
+          <table className="min-w-full divide-y divide-slate-200 text-xs min-w-[700px]">
             <thead className="bg-[#FAF8F5] text-navy font-bold border-b border-orange-border/70">
               <tr>
                 <th className="py-3 px-4 text-left">Timestamp</th>

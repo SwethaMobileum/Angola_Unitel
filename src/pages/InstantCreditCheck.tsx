@@ -120,7 +120,7 @@ export const InstantCreditCheck: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 w-full min-w-0 pb-8">
+    <div className="space-y-4 w-full min-w-0 max-w-full pb-8">
       {/* Page Header Strip */}
       <PageHeader
         title="Instant Credit Check"

@@ -133,7 +133,7 @@ export const Segments: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6 w-full min-w-0">
+    <div className="space-y-6 w-full min-w-0 max-w-full">
       {/* Page Title & Core Scoring Principle Banner */}
       <div>
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -164,7 +164,7 @@ export const Segments: React.FC = () => {
       </div>
 
       {/* Tabs Bar */}
-      <div className="flex border-b border-slate-border gap-1 overflow-x-auto">
+      <div className="flex border-b border-slate-border gap-1 overflow-x-auto no-scrollbar w-full">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;

@@ -392,7 +392,7 @@ export const Admin: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-4 w-full min-w-0 pb-10">
+    <div className="space-y-4 w-full min-w-0 max-w-full pb-10">
       {/* Page Header (Few-words rule: title <= 4 words, helper <= 10 words) */}
       <PageHeader
         title="Credit Administration"
@@ -401,7 +401,7 @@ export const Admin: React.FC = () => {
       />
 
       {/* Main Tab Navigation Bar */}
-      <div className="bg-white rounded-xl p-1.5 shadow-sm border-2 border-orange flex flex-wrap items-center justify-between gap-2">
+      <div className="bg-white rounded-xl p-1.5 shadow-sm border-2 border-orange flex flex-wrap items-center justify-between gap-2 w-full">
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -538,9 +538,9 @@ export const Admin: React.FC = () => {
           </div>
 
           {/* 3-Column Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start w-full min-w-0">
             {/* COLUMN 1: 6 Blocks List (Col-span-3) */}
-            <div className="lg:col-span-3 bg-white rounded-xl p-3 border-2 border-orange shadow-xs space-y-2">
+            <div className="lg:col-span-3 min-w-0 w-full bg-white rounded-xl p-3 border-2 border-orange shadow-xs space-y-2">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-1">
                 Scoring Blocks
               </div>
@@ -585,7 +585,7 @@ export const Admin: React.FC = () => {
             </div>
 
             {/* COLUMN 2: Parameters & Editable Rules (Col-span-5) */}
-            <div className="lg:col-span-5 bg-white rounded-xl p-3 border-2 border-orange shadow-xs space-y-3">
+            <div className="lg:col-span-5 min-w-0 w-full bg-white rounded-xl p-3 border-2 border-orange shadow-xs space-y-3">
               {/* Parameter Selection Tabs / Pills */}
               <div className="space-y-1.5">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-1 flex items-center justify-between">
@@ -692,7 +692,7 @@ export const Admin: React.FC = () => {
             </div>
 
             {/* COLUMN 3: Live Test Card (Col-span-4) */}
-            <div className="lg:col-span-4 bg-white rounded-xl p-3 border-2 border-orange/30 shadow-sm space-y-3">
+            <div className="lg:col-span-4 min-w-0 w-full bg-white rounded-xl p-3 border-2 border-orange/30 shadow-sm space-y-3">
               <div className="flex items-center justify-between border-b border-peach/40 pb-2">
                 <div className="flex items-center gap-1.5">
                   <div className="w-2 h-2 rounded-full bg-orange animate-ping" />
@@ -830,8 +830,8 @@ export const Admin: React.FC = () => {
 
           {/* Form for Segment Weights Table */}
           <form onSubmit={handleSaveWeights} className="space-y-4">
-            <div className="overflow-x-auto border border-peach/30 rounded-xl">
-              <table className="w-full text-xs divide-y divide-slate-100">
+            <div className="overflow-x-auto w-full border border-peach/30 rounded-xl">
+              <table className="w-full text-xs divide-y divide-slate-100 min-w-[620px]">
                 <thead className="bg-cream/60 text-ink font-bold">
                   <tr>
                     <th className="py-2.5 px-3 text-left">Segment</th>
@@ -1092,8 +1092,8 @@ export const Admin: React.FC = () => {
             </div>
 
             {/* Table of the 7 Demo Customers */}
-            <div className="overflow-x-auto border border-peach/30 rounded-xl">
-              <table className="w-full text-xs divide-y divide-slate-100">
+            <div className="overflow-x-auto w-full border border-peach/30 rounded-xl">
+              <table className="w-full text-xs divide-y divide-slate-100 min-w-[620px]">
                 <thead className="bg-cream/60 text-ink font-bold">
                   <tr>
                     <th className="py-2.5 px-3 text-left">Subscriber</th>

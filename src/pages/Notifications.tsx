@@ -174,7 +174,7 @@ export const Notifications: React.FC = () => {
   }, [activePreviewTemplate]);
 
   return (
-    <div className="space-y-4 w-full min-w-0 pb-10">
+    <div className="space-y-4 w-full min-w-0 max-w-full pb-10">
       {/* Page Header (Few-words rule: title <= 4 words, helper <= 10 words) */}
       <PageHeader
         title="Notifications Ledger"
@@ -183,7 +183,7 @@ export const Notifications: React.FC = () => {
       />
 
       {/* Top Filter & Actions Bar */}
-      <div className="bg-white rounded-xl p-3 shadow-xs border-2 border-orange flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white rounded-xl p-3 shadow-xs border-2 border-orange flex flex-wrap items-center justify-between gap-3 w-full">
         {/* Search & Filter */}
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="relative w-64 sm:w-72">
@@ -252,9 +252,9 @@ export const Notifications: React.FC = () => {
       </div>
 
       {/* Notifications Table Card */}
-      <div className="bg-white rounded-xl border-2 border-orange shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs divide-y divide-slate-100">
+      <div className="bg-white rounded-xl border-2 border-orange shadow-xs overflow-hidden w-full">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full text-xs divide-y divide-slate-100 min-w-[650px]">
             <thead className="bg-cream/60 text-ink font-bold">
               <tr>
                 <th className="py-2.5 px-4 text-left w-[230px]">Recipient</th>
